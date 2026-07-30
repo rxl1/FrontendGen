@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${MYSQL_URL}
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      database: ${REDIS_DB:0}
+
+# Redisson
+redisson:
+  address: ${REDISSON_ADDRESS}
+  password: ${REDIS_PASSWORD}
+  database: ${REDIS_DB:0}
+
+logging:
+  level:
+    com.renix: info
