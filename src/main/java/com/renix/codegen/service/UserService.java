@@ -2,7 +2,7 @@ package com.renix.codegen.service;
 
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
-import com.renix.codegen.model.dto.UserQueryRequest;
+import com.renix.codegen.model.dto.user.UserQueryRequest;
 import com.renix.codegen.model.entity.User;
 import com.renix.codegen.model.vo.LoginUserVO;
 import com.renix.codegen.model.vo.UserVO;

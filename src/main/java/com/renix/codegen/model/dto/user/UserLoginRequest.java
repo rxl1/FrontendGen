@@ -1,4 +1,4 @@
-package com.renix.codegen.model.dto;
+package com.renix.codegen.model.dto.user;
 
 import lombok.Data;
 

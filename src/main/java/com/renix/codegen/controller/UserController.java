@@ -10,7 +10,7 @@ import com.renix.codegen.constant.UserConstant;
 import com.renix.codegen.exception.BusinessException;
 import com.renix.codegen.exception.ErrorCode;
 import com.renix.codegen.exception.ThrowUtils;
-import com.renix.codegen.model.dto.*;
+import com.renix.codegen.model.dto.user.*;
 import com.renix.codegen.model.entity.User;
 import com.renix.codegen.model.vo.LoginUserVO;
 import com.renix.codegen.model.vo.UserVO;

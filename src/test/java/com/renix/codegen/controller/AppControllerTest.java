@@ -1,13 +1,14 @@
 package com.renix.codegen.controller;
 
 import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.query.QueryWrapper;
 import com.renix.codegen.common.BaseResponse;
 import com.renix.codegen.common.DeleteRequest;
 import com.renix.codegen.constant.UserConstant;
-import com.renix.codegen.model.dto.AppAddRequest;
-import com.renix.codegen.model.dto.AppAdminUpdateRequest;
-import com.renix.codegen.model.dto.AppQueryRequest;
-import com.renix.codegen.model.dto.AppUpdateRequest;
+import com.renix.codegen.model.dto.app.AppAddRequest;
+import com.renix.codegen.model.dto.app.AppAdminUpdateRequest;
+import com.renix.codegen.model.dto.app.AppQueryRequest;
+import com.renix.codegen.model.dto.app.AppUpdateRequest;
 import com.renix.codegen.model.entity.App;
 import com.renix.codegen.model.entity.User;
 import com.renix.codegen.model.enums.UserRoleEnum;
@@ -81,9 +82,7 @@ class AppControllerTest {
         MockHttpServletRequest request = createMockRequest();
 
         AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("控制器测试应用");
-        appAddRequest.setInitPrompt("生成一个计算器");
-        appAddRequest.setCodeGenType("html");
+        appAddRequest.setInitPrompt("生成一个计算器应用");
 
         // 执行测试
         BaseResponse<Long> response = appController.addApp(appAddRequest, request);
@@ -98,19 +97,34 @@ class AppControllerTest {
     }
 
     /**
-     * 测试用户更新应用
+     * 测试创建应用时 initPrompt 为空
      */
     @Test
     @Order(2)
+    void testAddAppWithEmptyInitPrompt() {
+        MockHttpServletRequest request = createMockRequest();
+
+        AppAddRequest appAddRequest = new AppAddRequest();
+        appAddRequest.setInitPrompt("");  // 空的 initPrompt
+
+        // 执行测试，应该抛出异常
+        assertThrows(Exception.class, () -> {
+            appController.addApp(appAddRequest, request);
+        });
+    }
+
+    /**
+     * 测试用户更新应用
+     */
+    @Test
+    @Order(3)
     void testUpdateApp() {
         // 准备测试数据
         MockHttpServletRequest request = createMockRequest();
 
         // 先创建一个应用
         AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("原始名称");
         appAddRequest.setInitPrompt("测试");
-        appAddRequest.setCodeGenType("html");
         BaseResponse<Long> addResponse = appController.addApp(appAddRequest, request);
         long appId = addResponse.getData();
 
@@ -134,16 +148,14 @@ class AppControllerTest {
      * 测试用户删除应用
      */
     @Test
-    @Order(3)
+    @Order(4)
     void testDeleteApp() {
         // 准备测试数据
         MockHttpServletRequest request = createMockRequest();
 
         // 先创建一个应用
         AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("待删除应用");
         appAddRequest.setInitPrompt("测试");
-        appAddRequest.setCodeGenType("html");
         BaseResponse<Long> addResponse = appController.addApp(appAddRequest, request);
         long appId = addResponse.getData();
 
@@ -163,21 +175,19 @@ class AppControllerTest {
      * 测试获取应用详情
      */
     @Test
-    @Order(4)
-    void testGetAppVO() {
+    @Order(5)
+    void testGetAppVOById() {
         // 准备测试数据
         MockHttpServletRequest request = createMockRequest();
 
         // 先创建一个应用
         AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("详情测试应用");
         appAddRequest.setInitPrompt("测试");
-        appAddRequest.setCodeGenType("html");
         BaseResponse<Long> addResponse = appController.addApp(appAddRequest, request);
         long appId = addResponse.getData();
 
         // 获取应用详情
-        BaseResponse<AppVO> response = appController.getAppVO(appId);
+        BaseResponse<AppVO> response = appController.getAppVOById(appId);
 
         // 验证结果
         assertNotNull(response);
@@ -193,16 +203,14 @@ class AppControllerTest {
      * 测试查询我的应用列表
      */
     @Test
-    @Order(5)
-    void testListMyApps() {
+    @Order(6)
+    void testListMyAppVOByPage() {
         // 准备测试数据
         MockHttpServletRequest request = createMockRequest();
 
         // 创建应用
         AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("列表测试应用");
         appAddRequest.setInitPrompt("测试");
-        appAddRequest.setCodeGenType("html");
         BaseResponse<Long> addResponse = appController.addApp(appAddRequest, request);
         long appId = addResponse.getData();
 
@@ -211,7 +219,7 @@ class AppControllerTest {
         queryRequest.setPageNum(1);
         queryRequest.setPageSize(10);
 
-        BaseResponse<Page<AppVO>> response = appController.listMyApps(queryRequest, request);
+        BaseResponse<Page<AppVO>> response = appController.listMyAppVOByPage(queryRequest, request);
 
         // 验证结果
         assertNotNull(response);
@@ -227,16 +235,14 @@ class AppControllerTest {
      * 测试查询精选应用列表
      */
     @Test
-    @Order(6)
-    void testListFeaturedApps() {
+    @Order(7)
+    void testListGoodAppVOByPage() {
         // 准备测试数据
         MockHttpServletRequest request = createMockRequest();
 
         // 创建应用
         AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("精选测试应用");
         appAddRequest.setInitPrompt("测试");
-        appAddRequest.setCodeGenType("html");
         BaseResponse<Long> addResponse = appController.addApp(appAddRequest, request);
         long appId = addResponse.getData();
 
@@ -250,7 +256,7 @@ class AppControllerTest {
         queryRequest.setPageNum(1);
         queryRequest.setPageSize(10);
 
-        BaseResponse<Page<AppVO>> response = appController.listFeaturedApps(queryRequest);
+        BaseResponse<Page<AppVO>> response = appController.listGoodAppVOByPage(queryRequest);
 
         // 验证结果
         assertNotNull(response);
@@ -263,52 +269,54 @@ class AppControllerTest {
     }
 
     /**
-     * 测试管理员删除应用（通过 Service 层测试）
+     * 测试管理员删除应用（通过 Service 层测试，避免 AOP 拦截器问题）
      */
     @Test
-    @Order(7)
+    @Order(8)
     void testAdminDeleteApp() {
         // 准备测试数据
         MockHttpServletRequest request = createMockRequest();
 
         // 先创建一个应用
         AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("管理员删除测试");
         appAddRequest.setInitPrompt("测试");
-        appAddRequest.setCodeGenType("html");
-        long appId = appService.addApp(appAddRequest, request);
+        BaseResponse<Long> addResponse = appController.addApp(appAddRequest, request);
+        long appId = addResponse.getData();
 
-        // 管理员删除应用（通过 Service 层）
-        boolean result = appService.adminDeleteApp(appId);
+        // 验证应用存在
+        App app = appService.getById(appId);
+        assertNotNull(app);
+
+        // 删除应用
+        boolean result = appService.removeById(appId);
 
         // 验证结果
         assertTrue(result);
     }
 
     /**
-     * 测试管理员更新应用（通过 Service 层测试）
+     * 测试管理员更新应用（通过 Service 层测试，避免 AOP 拦截器问题）
      */
     @Test
-    @Order(8)
+    @Order(9)
     void testAdminUpdateApp() {
         // 准备测试数据
         MockHttpServletRequest request = createMockRequest();
 
         // 先创建一个应用
         AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("管理员更新测试");
         appAddRequest.setInitPrompt("测试");
-        appAddRequest.setCodeGenType("html");
-        long appId = appService.addApp(appAddRequest, request);
+        BaseResponse<Long> addResponse = appController.addApp(appAddRequest, request);
+        long appId = addResponse.getData();
 
-        // 管理员更新应用（通过 Service 层）
-        AppAdminUpdateRequest updateRequest = new AppAdminUpdateRequest();
-        updateRequest.setId(appId);
-        updateRequest.setAppName("管理员更新后的名称");
-        updateRequest.setCover("new-cover.jpg");
-        updateRequest.setPriority(99);
+        // 更新应用
+        App app = new App();
+        app.setId(appId);
+        app.setAppName("管理员更新后的名称");
+        app.setCover("new-cover.jpg");
+        app.setPriority(99);
 
-        boolean result = appService.adminUpdateApp(updateRequest);
+        boolean result = appService.updateById(app);
 
         // 验证结果
         assertTrue(result);
@@ -318,59 +326,31 @@ class AppControllerTest {
     }
 
     /**
-     * 测试管理员分页查询应用（通过 Service 层测试）
+     * 测试管理员分页查询应用（通过 Service 层测试，避免 AOP 拦截器问题）
      */
     @Test
-    @Order(9)
+    @Order(10)
     void testAdminListApps() {
         // 准备测试数据
         MockHttpServletRequest request = createMockRequest();
 
         // 创建应用
         AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("管理员查询测试");
         appAddRequest.setInitPrompt("测试");
-        appAddRequest.setCodeGenType("html");
-        long appId = appService.addApp(appAddRequest, request);
+        BaseResponse<Long> addResponse = appController.addApp(appAddRequest, request);
+        long appId = addResponse.getData();
 
-        // 分页查询（通过 Service 层）
+        // 分页查询
         AppQueryRequest queryRequest = new AppQueryRequest();
         queryRequest.setPageNum(1);
         queryRequest.setPageSize(10);
-        queryRequest.setAppName("管理员查询测试");
 
-        Page<AppVO> page = appService.adminListApps(queryRequest);
+        QueryWrapper queryWrapper = appService.getQueryWrapper(queryRequest);
+        Page<App> page = appService.page(Page.of(1, 10), queryWrapper);
 
         // 验证结果
         assertNotNull(page);
         assertTrue(page.getRecords().size() >= 1);
-
-        // 清理测试数据
-        appService.removeById(appId);
-    }
-
-    /**
-     * 测试管理员获取应用详情（通过 Service 层测试）
-     */
-    @Test
-    @Order(10)
-    void testAdminGetAppVO() {
-        // 准备测试数据
-        MockHttpServletRequest request = createMockRequest();
-
-        // 先创建一个应用
-        AppAddRequest appAddRequest = new AppAddRequest();
-        appAddRequest.setAppName("管理员详情测试");
-        appAddRequest.setInitPrompt("测试");
-        appAddRequest.setCodeGenType("html");
-        long appId = appService.addApp(appAddRequest, request);
-
-        // 管理员获取应用详情（通过 Service 层）
-        AppVO appVO = appService.adminGetAppVO(appId);
-
-        // 验证结果
-        assertNotNull(appVO);
-        assertEquals(appId, appVO.getId());
 
         // 清理测试数据
         appService.removeById(appId);

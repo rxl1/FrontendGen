@@ -1,4 +1,4 @@
-package com.renix.codegen.model.dto;
+package com.renix.codegen.model.dto.app;
 
 import com.renix.codegen.common.PageRequest;
 import lombok.Data;
