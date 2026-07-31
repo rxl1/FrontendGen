@@ -43,3 +43,5 @@ build/
 data
 application-dev.yaml
 tmp/
+.claude
+
