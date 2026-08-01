@@ -110,6 +110,177 @@ npm run dev
 
 ---
 
+## 🐳 Docker 部署
+
+### Docker Compose 服务
+
+本项目使用 Docker Compose 管理以下服务：
+
+| 服务 | 容器名 | 端口 | 说明 |
+|------|--------|------|------|
+| MySQL | codegen-mysql | 3306 | 数据库 |
+| Redis | codegen-redis-master | 6379 | 缓存 |
+| Nginx | codegen-nginx | 80, 443 | Web 服务器 |
+
+### Nginx 配置指南
+
+#### 目录结构
+
+```
+CodeGen/
+├── docker-compose.yaml
+├── data/nginx/
+│   ├── nginx.conf          # 主配置文件
+│   ├── conf.d/
+│   │   └── default.conf    # 站点配置
+│   └── logs/               # 日志目录
+└── codegen-frontend/
+    └── dist/               # 前端构建产物
+```
+
+#### docker-compose.yaml 配置
+
+```yaml
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: codegen-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./data/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./data/nginx/conf.d:/etc/nginx/conf.d
+      - ./codegen-frontend/dist:/usr/share/nginx/html
+      - ./data/nginx/logs:/var/log/nginx
+    depends_on:
+      - mysql
+      - redis-master
+```
+
+#### nginx.conf（主配置）
+
+```nginx
+user  nginx;
+worker_processes  auto;
+
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    keepalive_timeout  65;
+
+    include /etc/nginx/conf.d/*.conf;
+}
+```
+
+#### default.conf（站点配置）
+
+```nginx
+server {
+    listen       80;
+    server_name  localhost;
+
+    # 前端静态文件
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+        try_files $uri $uri/ /index.html;  # Vue/React 路由支持
+    }
+
+    # API 反向代理
+    location /api/ {
+        proxy_pass http://host.docker.internal:8123/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # SSE 流式响应配置（可选）
+    location /api/app/chat/gen/code {
+        proxy_pass http://host.docker.internal:8123/api/app/chat/gen/code;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding off;
+    }
+
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   /usr/share/nginx/html;
+    }
+}
+```
+
+### 部署步骤
+
+1. **构建前端**
+
+```bash
+cd codegen-frontend
+npm run build
+```
+
+2. **创建配置目录**
+
+```bash
+mkdir -p data/nginx/conf.d data/nginx/logs
+```
+
+3. **创建配置文件**
+
+创建 `data/nginx/nginx.conf` 和 `data/nginx/conf.d/default.conf`（内容见上文）
+
+4. **启动服务**
+
+```bash
+docker compose up -d
+```
+
+5. **查看日志**
+
+```bash
+docker compose logs -f nginx
+```
+
+### 常见问题
+
+| 问题 | 原因 | 解决方案 |
+|------|------|----------|
+| 挂载失败 | 文件/目录不存在 | 先创建文件和目录 |
+| 权限问题 | 目录是 root 创建的 | `sudo chown -R user:user ./data/nginx/` |
+| 语法错误 | 配置文件有特殊字符 | 检查反斜杠、分号等 |
+| 代理失败 | 后端地址错误 | 使用 `host.docker.internal` 访问宿主机 |
+
+### 关键点
+
+1. **文件必须先创建**：挂载的文件如果不存在，Docker 会创建为目录
+2. **路径使用相对路径**：`./data/nginx/nginx.conf` 而不是绝对路径
+3. **代理宿主机服务**：使用 `host.docker.internal` 而不是 `localhost`
+4. **SSE/WebSocket**：需要特殊配置（关闭缓冲）
+
+---
+
 ## 🎨 设计模式
 
 本项目在核心模块中使用了多种设计模式，提高代码的可维护性和扩展性。
