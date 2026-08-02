@@ -15,27 +15,34 @@ import org.springframework.web.servlet.HandlerMapping;
 
 import java.io.File;
 
+import static com.renix.codegen.constant.AppConstant.CODE_DEPLOY_ROOT_DIR;
 import static com.renix.codegen.constant.AppConstant.CODE_OUTPUT_ROOT_DIR;
 
 @RestController
 @RequestMapping("/static")
 public class StaticResourceController {
 
-    // 应用生成根目录（用于浏览）
-    private static final String PREVIEW_ROOT_DIR = System.getProperty("user.dir") + AppConstant.CODE_OUTPUT_ROOT_DIR;
+    // 应用部署根目录（用于部署后的访问）
+    private static final String DEPLOY_ROOT_DIR = AppConstant.CODE_DEPLOY_ROOT_DIR;
+
+    // 应用生成根目录（用于预览）
+    private static final String OUTPUT_ROOT_DIR = AppConstant.CODE_OUTPUT_ROOT_DIR;
 
     /**
      * 提供静态资源访问，支持目录重定向
-     * 访问格式：http://localhost:8123/api/static/{deployKey}[/{fileName}]
+     * 访问格式：http://localhost:8123/api/static/{key}[/{fileName}]
+     * 支持两种场景：
+     * 1. 预览：key = {codeGenType}_{appId}，从 code_output 目录读取
+     * 2. 部署：key = deployKey，从 code_deploy 目录读取
      */
-    @GetMapping("/{deployKey}/**")
+    @GetMapping("/{key}/**")
     public ResponseEntity<Resource> serveStaticResource(
-            @PathVariable String deployKey,
+            @PathVariable String key,
             HttpServletRequest request) {
         try {
             // 获取资源路径
             String resourcePath = (String) request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
-            resourcePath = resourcePath.substring(("/static/" + deployKey).length());
+            resourcePath = resourcePath.substring(("/static/" + key).length());
             // 如果是目录访问（不带斜杠），重定向到带斜杠的URL
             if (resourcePath.isEmpty()) {
                 HttpHeaders headers = new HttpHeaders();
@@ -46,9 +53,14 @@ public class StaticResourceController {
             if (resourcePath.equals("/")) {
                 resourcePath = "/index.html";
             }
-            // 构建文件路径
-            String filePath = PREVIEW_ROOT_DIR + "/" + deployKey + resourcePath;
+            // 先从部署目录查找
+            String filePath = DEPLOY_ROOT_DIR + "/" + key + resourcePath;
             File file = new File(filePath);
+            // 如果部署目录不存在，从代码生成目录查找
+            if (!file.exists()) {
+                filePath = OUTPUT_ROOT_DIR + "/" + key + resourcePath;
+                file = new File(filePath);
+            }
             // 检查文件是否存在
             if (!file.exists()) {
                 return ResponseEntity.notFound().build();
