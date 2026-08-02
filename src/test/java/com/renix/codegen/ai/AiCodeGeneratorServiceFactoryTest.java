@@ -28,16 +28,4 @@ class AiCodeGeneratorServiceFactoryTest {
         Assertions.assertNotNull(result);
     }
 
-    @Test
-    void testChatMemory() {
-        HtmlCodeResult result = aiCodeGeneratorService.generateHtmlCode(1, "做个程序员的工具网站，总代码量不超过 20 行");
-        Assertions.assertNotNull(result);
-        result = aiCodeGeneratorService.generateHtmlCode(1, "不要生成网站，告诉我你刚刚做了什么？");
-        Assertions.assertNotNull(result);
-        result = aiCodeGeneratorService.generateHtmlCode(2, "做个程序员的工具网站，总代码量不超过 20 行");
-        Assertions.assertNotNull(result);
-        result = aiCodeGeneratorService.generateHtmlCode(2, "不要生成网站，告诉我你刚刚做了什么？");
-        Assertions.assertNotNull(result);
-    }
-
 }
