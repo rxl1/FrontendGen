@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.nio.charset.StandardCharsets;
 
 /**
  * 文件写入工具
@@ -18,6 +19,12 @@ import java.nio.file.StandardOpenOption;
  */
 @Slf4j
 public class FileWriteTool {
+
+    private final String outputDirectoryPrefix;
+
+    public FileWriteTool(String outputDirectoryPrefix) {
+        this.outputDirectoryPrefix = outputDirectoryPrefix;
+    }
 
     @Tool("写入文件到指定路径")
     public String writeFile(
@@ -28,12 +35,17 @@ public class FileWriteTool {
             @ToolMemoryId Long appId
     ) {
         try {
-            Path path = Paths.get(relativeFilePath);
-            if (!path.isAbsolute()) {
-                // 相对路径处理，创建基于 appId 的项目目录
-                String projectDirName = "vue_project_" + appId;
-                Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName);
-                path = projectRoot.resolve(relativeFilePath);
+            Path requestedPath = Paths.get(relativeFilePath);
+            if (requestedPath.isAbsolute()) {
+                return "文件写入失败: 只允许使用项目内的相对路径";
+            }
+            String projectDirName = outputDirectoryPrefix + "_" + appId;
+            Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName)
+                    .toAbsolutePath()
+                    .normalize();
+            Path path = projectRoot.resolve(requestedPath).normalize();
+            if (!path.startsWith(projectRoot)) {
+                return "文件写入失败: 路径不能超出项目目录";
             }
             // 创建父目录（如果不存在）
             Path parentDir = path.getParent();
@@ -41,7 +53,7 @@ public class FileWriteTool {
                 Files.createDirectories(parentDir);
             }
             // 写入文件内容
-            Files.write(path, content.getBytes(),
+            Files.write(path, content.getBytes(StandardCharsets.UTF_8),
                     StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING);
             log.info("成功写入文件: {}", path.toAbsolutePath());

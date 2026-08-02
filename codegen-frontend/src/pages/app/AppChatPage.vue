@@ -229,6 +229,7 @@ import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import aiAvatar from '@/assets/aiAvatar.png'
 import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
 import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
+import { AiStreamAccumulator, normalizeStoredAiMessage, parseStreamMessage } from '@/utils/aiStream'
 
 import {
   CloudUploadOutlined,
@@ -325,7 +326,10 @@ const loadChatHistory = async (isLoadMore = false) => {
         const historyMessages: Message[] = chatHistories
             .map((chat) => ({
               type: (chat.messageType === 'user' ? 'user' : 'ai') as 'user' | 'ai',
-              content: chat.message || '',
+              content:
+                chat.messageType === 'user'
+                  ? chat.message || ''
+                  : normalizeStoredAiMessage(chat.message || ''),
               createTime: chat.createTime,
             }))
             .reverse() // 反转数组，让老消息在前
@@ -497,27 +501,60 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
       withCredentials: true,
     })
 
-    let fullContent = ''
+    const streamAccumulator = new AiStreamAccumulator()
+    let renderFrame: number | null = null
+
+    const renderSegments = () => {
+      const targetMessage = messages.value[aiMessageIndex]
+      if (!targetMessage) return
+      targetMessage.content = streamAccumulator.toMarkdown()
+      targetMessage.loading = false
+      scrollToBottom()
+    }
+
+    // 模型通常按 token 高频推送，按动画帧合并 UI 更新，仍保持逐步可见且避免反复高亮整段代码。
+    const scheduleRender = () => {
+      if (renderFrame !== null) return
+      renderFrame = window.requestAnimationFrame(() => {
+        renderFrame = null
+        renderSegments()
+      })
+    }
+
+    const flushRender = () => {
+      if (renderFrame !== null) {
+        window.cancelAnimationFrame(renderFrame)
+        renderFrame = null
+      }
+      renderSegments()
+    }
 
     // 处理接收到的消息
     eventSource.onmessage = function (event) {
       if (streamCompleted) return
 
       try {
-        // 解析JSON包装的数据
-        const parsed = JSON.parse(event.data)
-        const content = parsed.d
+        const parsed = parseStreamMessage(event.data)
+        const messageType = parsed.type
 
-        // 拼接内容
-        if (content !== undefined && content !== null) {
-          fullContent += content
-          messages.value[aiMessageIndex].content = fullContent
-          messages.value[aiMessageIndex].loading = false
-          scrollToBottom()
+        // 根据消息类型处理
+        if (messageType === 'ai_response') {
+          // AI 文本响应
+          streamAccumulator.consume(parsed)
+          scheduleRender()
+        } else if (messageType === 'tool_request') {
+          // partialArguments 是增量片段；持续更新同一个工具调用，让参数也能流式展示。
+          streamAccumulator.consume(parsed)
+          scheduleRender()
+        } else if (messageType === 'tool_executed') {
+          streamAccumulator.consume(parsed)
+          flushRender()
+        } else {
+          console.warn('忽略未知的 SSE 消息:', parsed)
         }
       } catch (error) {
-        console.error('解析消息失败:', error)
-        handleError(error, aiMessageIndex)
+        // 单个格式异常的事件不应中断整个生成过程，也不能把 JSON 原文直接显示给用户。
+        console.error('解析 SSE 消息失败:', error, event.data)
       }
     }
 
@@ -527,6 +564,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
 
       streamCompleted = true
       isGenerating.value = false
+      flushRender()
       eventSource?.close()
 
       // 延迟更新预览，确保后端已完成处理

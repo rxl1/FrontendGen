@@ -4,6 +4,7 @@ import com.renix.codegen.ai.model.HtmlCodeResult;
 import com.renix.codegen.ai.model.MultiFileCodeResult;
 import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
+import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.UserMessage;
 import reactor.core.publisher.Flux;
 
@@ -44,11 +45,19 @@ public interface AiCodeGeneratorService {
     Flux<String> generateMultiFileCodeStream(String userMessage);
 
     /**
-     * 生成 Vue 项目代码（流式）
+     * 生成代码（带工具调用，流式输出）
+     * 使用 TokenStream 支持工具调用的流式输出
      *
+     * @param appId       应用 ID
      * @param userMessage 用户提示词
-     * @return AI 的输出结果
+     * @return TokenStream，支持工具调用的流式输出
+     */
+    @SystemMessage(fromResource = "prompt/codegen-multi-file-with-tools-system-prompt.txt")
+    TokenStream generateMultiFileCodeWithTools(@MemoryId long appId, @UserMessage String userMessage);
+
+    /**
+     * 生成 Vue 工程代码（带工具调用，流式输出）
      */
     @SystemMessage(fromResource = "prompt/codegen-vue-project-system-prompt.txt")
-    Flux<String> generateVueProjectCodeStream(@MemoryId long appId, @UserMessage String userMessage);
+    TokenStream generateVueProjectCodeWithTools(@MemoryId long appId, @UserMessage String userMessage);
 }

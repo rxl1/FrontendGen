@@ -44,4 +44,5 @@ data
 application-dev.yaml
 tmp/
 .claude
+.firecrawl/
 

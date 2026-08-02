@@ -18,7 +18,8 @@ const props = defineProps<Props>()
 
 // 配置 markdown-it 实例
 const md: MarkdownIt = new MarkdownIt({
-  html: true,
+  // AI 返回的原始 HTML 只能作为代码展示，禁止在聊天区域直接执行。
+  html: false,
   linkify: true,
   typographer: true,
   highlight: function (str: string, lang: string): string {

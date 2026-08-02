@@ -30,9 +30,6 @@ public class AiCodeGeneratorServiceFactory {
     private StreamingChatModel openAiStreamingChatModel;
 
     @Resource
-    private StreamingChatModel reasoningStreamingChatModel;
-
-    @Resource
     private RedisChatMemoryStore redisChatMemoryStore;
 
     @Resource
@@ -79,7 +76,7 @@ public class AiCodeGeneratorServiceFactory {
      * @return
      */
     private AiCodeGeneratorService createAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenType) {
-        log.info("为 appId: {} 创建新的 AI 服务实例", appId);
+        log.info("为 appId: {} 创建新的 AI 服务实例，类型: {}", appId, codeGenType);
         // 根据 appId 构建独立的对话记忆
         MessageWindowChatMemory chatMemory = MessageWindowChatMemory
                 .builder()
@@ -90,20 +87,20 @@ public class AiCodeGeneratorServiceFactory {
         //  从数据库加载历史对话到记忆中
         chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
         return switch (codeGenType) {
-            // Vue 项目生成，使用工具调用和推理模型
-            case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
+            // 多文件和 Vue 项目生成，使用工具调用
+            case MULTI_FILE, VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
-                    .streamingChatModel(reasoningStreamingChatModel)
+                    .streamingChatModel(openAiStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool())
+                    .tools(new FileWriteTool(codeGenType.getValue()))
                     // 处理工具调用幻觉问题
                     .hallucinatedToolNameStrategy(toolExecutionRequest ->
                             ToolExecutionResultMessage.from(toolExecutionRequest,
                                     "Error: there is no tool called " + toolExecutionRequest.name())
                     )
                     .build();
-            // HTML 和 多文件生成，使用流式对话模型
-            case HTML, MULTI_FILE -> AiServices.builder(AiCodeGeneratorService.class)
+            // HTML 生成，使用流式对话模型
+            case HTML -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
                     .streamingChatModel(openAiStreamingChatModel)
                     .chatMemory(chatMemory)
