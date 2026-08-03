@@ -7,6 +7,7 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
+import com.renix.codegen.ai.AiCodeGenTypeRoutingService;
 import com.renix.codegen.constant.AppConstant;
 import com.renix.codegen.core.AiCodeGeneratorFacade;
 import com.renix.codegen.core.builder.VueProjectBuilder;
@@ -15,6 +16,7 @@ import com.renix.codegen.exception.BusinessException;
 import com.renix.codegen.exception.ErrorCode;
 import com.renix.codegen.exception.ThrowUtils;
 import com.renix.codegen.mapper.AppMapper;
+import com.renix.codegen.model.dto.app.AppAddRequest;
 import com.renix.codegen.model.dto.app.AppQueryRequest;
 import com.renix.codegen.model.entity.App;
 import com.renix.codegen.model.entity.User;
@@ -61,6 +63,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private ScreenshotService screenshotService;
+
+    @Resource
+    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
 
     @Override
     public AppVO getAppVO(App app) {
@@ -156,6 +161,27 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     @Override
+    public Long createApp(AppAddRequest appAddRequest, User loginUser) {
+        // 参数校验
+        String initPrompt = appAddRequest.getInitPrompt();
+        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
+        // 构造入库对象
+        App app = new App();
+        BeanUtil.copyProperties(appAddRequest, app);
+        app.setUserId(loginUser.getId());
+        // 应用名称暂时为 initPrompt 前 12 位
+        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
+        // 使用 AI 智能选择代码生成类型
+        CodeGenTypeEnum selectedCodeGenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        app.setCodeGenType(selectedCodeGenType.getValue());
+        // 插入数据库
+        boolean result = this.save(app);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        log.info("应用创建成功，ID: {}, 类型: {}", app.getId(), selectedCodeGenType.getValue());
+        return app.getId();
+    }
+
+    @Override
     public String deployApp(Long appId, User loginUser) {
         // 1.参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 错误");
@@ -248,16 +274,19 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
      */
     @Override
     public void generateAppScreenshotAsync(Long appId, String appUrl) {
-        // 使用虚拟线程并执行
-        Thread.startVirtualThread(() -> {
-            // 调用截图服务生成截图并上传
-            String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
-            // 更新数据库的封面
-            App updateApp = new App();
-            updateApp.setId(appId);
-            updateApp.setCover(screenshotUrl);
-            boolean updated = this.updateById(updateApp);
-            ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+        Thread.ofVirtual().name("app-screenshot-" + appId).start(() -> {
+            log.info("开始异步生成应用封面，appId：{}，url：{}", appId, appUrl);
+            try {
+                String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
+                App updateApp = new App();
+                updateApp.setId(appId);
+                updateApp.setCover(screenshotUrl);
+                boolean updated = this.updateById(updateApp);
+                ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+                log.info("应用封面生成并更新成功，appId：{}，cover：{}", appId, screenshotUrl);
+            } catch (Exception e) {
+                log.error("异步生成应用封面失败，appId：{}，url：{}", appId, appUrl, e);
+            }
         });
     }
 }

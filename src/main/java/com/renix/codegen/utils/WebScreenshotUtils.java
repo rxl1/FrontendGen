@@ -16,8 +16,13 @@ import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * 截图工具类
@@ -34,6 +39,10 @@ public class WebScreenshotUtils {
     private static final String CHROME_BINARY_ENV = "CHROME_BINARY";
 
     private static final String CHROME_VERSION_PROPERTY = "chrome.version";
+
+    private static final String SELENIUM_CACHE_PATH_PROPERTY = "SE_CACHE_PATH";
+
+    private static final String CHROME_DRIVER_PROPERTY = "webdriver.chrome.driver";
 
     /**
      * 生成网页截图
@@ -125,8 +134,8 @@ public class WebScreenshotUtils {
     }
 
     /**
-     * 优先使用显式配置的 Chrome；未配置时由 Selenium Manager
-     * 自动发现系统 Chrome，或下载 Chrome for Testing 和匹配的驱动。
+     * 优先使用显式配置的 Chrome，其次复用 Selenium 已缓存且版本匹配的
+     * Chrome for Testing 和 ChromeDriver；仅在缓存不存在时访问网络下载。
      */
     private static void configureChromeBinary(ChromeOptions options) {
         String chromeBinary = System.getProperty(CHROME_BINARY_PROPERTY);
@@ -147,8 +156,78 @@ public class WebScreenshotUtils {
         }
 
         String chromeVersion = System.getProperty(CHROME_VERSION_PROPERTY, "stable");
+        if (configureCachedChrome(options, chromeVersion)) {
+            return;
+        }
         options.setBrowserVersion(chromeVersion);
-        log.info("未配置 Chrome 路径，由 Selenium Manager 自动管理 {} 版本", chromeVersion);
+        log.info("本地没有可用的 Selenium Chrome 缓存，由 Selenium Manager 自动管理 {} 版本", chromeVersion);
+    }
+
+    /**
+     * Selenium Manager 每次解析 stable 版本都可能访问网络。在网络不通时，
+     * 即使浏览器已经下载，也会等待网络超时数分钟。这里直接复用版本匹配的缓存。
+     */
+    private static boolean configureCachedChrome(ChromeOptions options, String requestedVersion) {
+        String cachePath = System.getProperty(SELENIUM_CACHE_PATH_PROPERTY);
+        if (StrUtil.isBlank(cachePath)) {
+            cachePath = System.getenv(SELENIUM_CACHE_PATH_PROPERTY);
+        }
+        if (StrUtil.isBlank(cachePath)) {
+            cachePath = System.getProperty("user.home") + File.separator + ".cache" + File.separator + "selenium";
+        }
+
+        Path cacheRoot = Path.of(cachePath).toAbsolutePath().normalize();
+        Path chromeRoot = cacheRoot.resolve("chrome");
+        if (!Files.isDirectory(chromeRoot)) {
+            return false;
+        }
+
+        try (Stream<Path> paths = Files.walk(chromeRoot, 4)) {
+            List<Path> cachedChromeBinaries = paths
+                    .filter(Files::isRegularFile)
+                    .filter(Files::isExecutable)
+                    .filter(path -> "chrome".equals(path.getFileName().toString())
+                            || "chrome.exe".equalsIgnoreCase(path.getFileName().toString()))
+                    .sorted(Comparator.comparing(
+                            path -> path.getParent().getFileName().toString(),
+                            Comparator.reverseOrder()
+                    ))
+                    .toList();
+
+            for (Path chromeBinary : cachedChromeBinaries) {
+                Path versionDirectory = chromeBinary.getParent();
+                Path platformDirectory = versionDirectory.getParent();
+                if (platformDirectory == null) {
+                    continue;
+                }
+                String cachedVersion = versionDirectory.getFileName().toString();
+                if (StrUtil.isNotBlank(requestedVersion)
+                        && !"stable".equalsIgnoreCase(requestedVersion)
+                        && !cachedVersion.startsWith(requestedVersion)) {
+                    continue;
+                }
+
+                String driverFileName = chromeBinary.getFileName().toString().endsWith(".exe")
+                        ? "chromedriver.exe"
+                        : "chromedriver";
+                Path driverBinary = cacheRoot.resolve("chromedriver")
+                        .resolve(platformDirectory.getFileName().toString())
+                        .resolve(cachedVersion)
+                        .resolve(driverFileName);
+                if (!Files.isRegularFile(driverBinary) || !Files.isExecutable(driverBinary)) {
+                    continue;
+                }
+
+                options.setBinary(chromeBinary.toFile());
+                System.setProperty(CHROME_DRIVER_PROPERTY, driverBinary.toString());
+                log.info("使用 Selenium 本地缓存的 Chrome {}，无需联网检查版本：{}",
+                        cachedVersion, chromeBinary);
+                return true;
+            }
+        } catch (Exception e) {
+            log.warn("读取 Selenium Chrome 缓存失败，将交由 Selenium Manager 处理：{}", cacheRoot, e);
+        }
+        return false;
     }
 
     /**

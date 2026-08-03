@@ -16,10 +16,22 @@ class WebScreenshotUtilsTest {
 
     @Test
     void saveWebPageScreenshot2(){
-        //String url = "https://www.baidu.com";
-        String url = "https://www.prcv.cn/web/#/registration";
+        String url = System.getProperty("screenshot.test.url", "https://www.prcv.cn/web/#/registration");
         String screenshotPath = WebScreenshotUtils.saveWebPageScreenshot(url);
-        assertNotNull(screenshotPath);
+        try {
+            assertNotNull(screenshotPath);
+            assertTrue(Files.isRegularFile(Path.of(screenshotPath)));
+        } finally {
+            if (screenshotPath != null) {
+                Path screenshotFile = Path.of(screenshotPath);
+                try {
+                    Files.deleteIfExists(screenshotFile);
+                    Files.deleteIfExists(screenshotFile.getParent());
+                } catch (Exception ignored) {
+                    // 测试清理失败不影响截图功能断言
+                }
+            }
+        }
     }
 
     @Test

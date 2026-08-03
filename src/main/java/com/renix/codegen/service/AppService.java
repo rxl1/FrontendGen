@@ -2,6 +2,7 @@ package com.renix.codegen.service;
 
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
+import com.renix.codegen.model.dto.app.AppAddRequest;
 import com.renix.codegen.model.dto.app.AppQueryRequest;
 import com.renix.codegen.model.entity.App;
 import com.renix.codegen.model.entity.User;
@@ -48,6 +49,15 @@ public interface AppService extends IService<App> {
      * @return 代码流
      */
     Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+
+    /**
+     * 创建应用
+     *
+     * @param appAddRequest
+     * @param loginUser
+     * @return
+     */
+    Long createApp(AppAddRequest appAddRequest, User loginUser);
 
     /**
      * 应用部署

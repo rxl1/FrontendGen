@@ -172,13 +172,13 @@
           </div>
         </div>
         <div class="preview-content">
-          <div v-if="!previewUrl && !isGenerating" class="preview-placeholder">
+          <div v-if="!previewUrl && !isGenerating && !previewPreparing" class="preview-placeholder">
             <div class="placeholder-icon">🌐</div>
-            <p>网站文件生成完成后将在这里展示</p>
+            <p>{{ previewError || '网站文件生成完成后将在这里展示' }}</p>
           </div>
-          <div v-else-if="isGenerating" class="preview-loading">
+          <div v-else-if="isGenerating || previewPreparing" class="preview-loading">
             <a-spin size="large" />
-            <p>正在生成网站...</p>
+            <p>{{ isGenerating ? '正在生成网站...' : previewPreparingText }}</p>
           </div>
           <iframe
               v-else
@@ -271,6 +271,11 @@ const historyLoaded = ref(false)
 // 预览相关
 const previewUrl = ref('')
 const previewReady = ref(false)
+const previewPreparing = ref(false)
+const previewError = ref('')
+const PREVIEW_POLL_TIMEOUT_MS = 9 * 60 * 1000
+let previewPollTimer: ReturnType<typeof window.setTimeout> | undefined
+let previewPollRequestId = 0
 
 // 部署相关
 const deploying = ref(false)
@@ -297,6 +302,12 @@ const isOwner = computed(() => {
 const isAdmin = computed(() => {
   return loginUserStore.loginUser.userRole === 'admin'
 })
+
+const previewPreparingText = computed(() =>
+  appInfo.value?.codeGenType === CodeGenTypeEnum.VUE_PROJECT
+    ? '正在安装依赖并构建 Vue 预览，完成后将自动显示...'
+    : '正在准备预览...'
+)
 
 // 应用详情相关
 const appDetailVisible = ref(false)
@@ -633,14 +644,75 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
   isGenerating.value = false
 }
 
-// 更新预览
-const updatePreview = () => {
-  if (appId.value) {
-    const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    const newPreviewUrl = getStaticPreviewUrl(codeGenType, appId.value)
-    previewUrl.value = newPreviewUrl
-    previewReady.value = true
+const stopPreviewPolling = () => {
+  previewPollRequestId += 1
+  if (previewPollTimer) {
+    window.clearTimeout(previewPollTimer)
+    previewPollTimer = undefined
   }
+}
+
+const appendCacheBuster = (url: string) => {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}_preview=${Date.now()}`
+}
+
+const pollPreviewAvailability = async (
+  targetUrl: string,
+  requestId: number,
+  startedAt: number,
+  attempt: number,
+) => {
+  if (requestId !== previewPollRequestId) return
+
+  try {
+    const response = await fetch(appendCacheBuster(targetUrl), {
+      // 使用与 iframe 一致的 GET，避免后端 CORS 未放行 HEAD 导致永远探测失败。
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    })
+    if (response.ok && requestId === previewPollRequestId) {
+      previewUrl.value = appendCacheBuster(targetUrl)
+      previewPreparing.value = false
+      previewReady.value = false
+      previewError.value = ''
+      return
+    }
+  } catch (error) {
+    // 构建期间静态资源可能暂时不可访问，由后续轮询继续检查。
+    console.debug('预览资源尚未就绪：', error)
+  }
+
+  if (Date.now() - startedAt >= PREVIEW_POLL_TIMEOUT_MS) {
+    if (requestId === previewPollRequestId) {
+      previewPreparing.value = false
+      previewError.value = '预览构建超时，请检查后端 npm install 和 npm run build 日志'
+    }
+    return
+  }
+
+  const nextDelay = Math.min(1000 + attempt * 500, 5000)
+  previewPollTimer = window.setTimeout(() => {
+    previewPollTimer = undefined
+    void pollPreviewAvailability(targetUrl, requestId, startedAt, attempt + 1)
+  }, nextDelay)
+}
+
+// 更新预览：Vue 构建在后端异步执行，等待 dist/index.html 可访问后再加载 iframe。
+const updatePreview = () => {
+  if (!appId.value) return
+
+  stopPreviewPolling()
+  const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
+  const targetUrl = getStaticPreviewUrl(codeGenType, appId.value)
+  const requestId = previewPollRequestId
+
+  previewUrl.value = ''
+  previewReady.value = false
+  previewPreparing.value = true
+  previewError.value = ''
+  void pollPreviewAvailability(targetUrl, requestId, Date.now(), 0)
 }
 
 // 滚动到底部
@@ -808,6 +880,7 @@ onMounted(() => {
 
 // 清理资源
 onUnmounted(() => {
+  stopPreviewPolling()
   // EventSource 会在组件卸载时自动清理
 })
 </script>
