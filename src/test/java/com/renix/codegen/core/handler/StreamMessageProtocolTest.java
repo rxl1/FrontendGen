@@ -2,6 +2,7 @@ package com.renix.codegen.core.handler;
 
 import cn.hutool.json.JSONUtil;
 import com.renix.codegen.ai.model.message.AiResponseMessage;
+import com.renix.codegen.ai.model.message.StreamErrorMessage;
 import com.renix.codegen.ai.model.message.ToolRequestMessage;
 import com.renix.codegen.model.entity.User;
 import com.renix.codegen.model.enums.CodeGenTypeEnum;
@@ -19,6 +20,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StreamMessageProtocolTest {
+
+    @Test
+    void shouldSerializeSafeStreamErrorPayload() {
+        StreamErrorMessage message = new StreamErrorMessage("AI_STREAM_ERROR", "AI 生成过程中出现异常，请重试");
+
+        String json = JSONUtil.toJsonStr(message);
+
+        assertEquals("error", JSONUtil.parseObj(json).getStr("type"));
+        assertEquals("AI_STREAM_ERROR", JSONUtil.parseObj(json).getStr("code"));
+        assertEquals("AI 生成过程中出现异常，请重试", JSONUtil.parseObj(json).getStr("message"));
+    }
 
     @Test
     void shouldSerializePartialToolCallWithCorrelationFields() {

@@ -1,6 +1,7 @@
 package com.renix.codegen.controller;
 
 import com.renix.codegen.ai.model.message.AiResponseMessage;
+import com.renix.codegen.ai.model.message.StreamErrorMessage;
 import com.renix.codegen.model.entity.User;
 import com.renix.codegen.service.AppService;
 import com.renix.codegen.service.UserService;
@@ -16,6 +17,7 @@ import java.util.List;
 
 import static cn.hutool.json.JSONUtil.toJsonStr;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class AppControllerStreamTest {
 
@@ -55,6 +57,86 @@ class AppControllerStreamTest {
         assertEquals("done", events.get(2).event());
         assertEquals("no-cache, no-transform", response.getHeader("Cache-Control"));
         assertEquals("no", response.getHeader("X-Accel-Buffering"));
+    }
+
+    @Test
+    void shouldConvertStreamFailureToBusinessErrorEvent() {
+        User loginUser = new User();
+        loginUser.setId(9L);
+        String partialChunk = toJsonStr(new AiResponseMessage("已完成 index.html"));
+
+        UserService userService = proxy(UserService.class, (methodName, args) -> {
+            if ("getLoginUser".equals(methodName)) return loginUser;
+            return null;
+        });
+        AppService appService = proxy(AppService.class, (methodName, args) -> {
+            if ("chatToGenCode".equals(methodName)) {
+                return Flux.concat(
+                        Flux.just(partialChunk),
+                        Flux.error(new RuntimeException("provider-sensitive-error"))
+                );
+            }
+            return null;
+        });
+
+        AppController controller = new AppController();
+        ReflectionTestUtils.setField(controller, "userService", userService);
+        ReflectionTestUtils.setField(controller, "appService", appService);
+
+        List<ServerSentEvent<String>> events = controller.chatToGenCode(
+                        7L,
+                        "创建网站",
+                        new MockHttpServletRequest(),
+                        new MockHttpServletResponse()
+                )
+                .collectList()
+                .block();
+
+        assertEquals(2, events.size());
+        assertEquals(partialChunk, events.get(0).data());
+        assertEquals("business-error", events.get(1).event());
+        StreamErrorMessage errorMessage = cn.hutool.json.JSONUtil.toBean(
+                events.get(1).data(),
+                StreamErrorMessage.class
+        );
+        assertEquals("error", errorMessage.getType());
+        assertEquals("AI_STREAM_ERROR", errorMessage.getCode());
+        assertEquals("AI 生成过程中出现异常，请重试", errorMessage.getMessage());
+        assertFalse(events.get(1).data().contains("provider-sensitive-error"));
+    }
+
+    @Test
+    void shouldConvertSynchronousServiceFailureToBusinessErrorEvent() {
+        User loginUser = new User();
+        loginUser.setId(9L);
+
+        UserService userService = proxy(UserService.class, (methodName, args) -> {
+            if ("getLoginUser".equals(methodName)) return loginUser;
+            return null;
+        });
+        AppService appService = proxy(AppService.class, (methodName, args) -> {
+            if ("chatToGenCode".equals(methodName)) {
+                throw new RuntimeException("synchronous-service-error");
+            }
+            return null;
+        });
+
+        AppController controller = new AppController();
+        ReflectionTestUtils.setField(controller, "userService", userService);
+        ReflectionTestUtils.setField(controller, "appService", appService);
+
+        List<ServerSentEvent<String>> events = controller.chatToGenCode(
+                        7L,
+                        "创建网站",
+                        new MockHttpServletRequest(),
+                        new MockHttpServletResponse()
+                )
+                .collectList()
+                .block();
+
+        assertEquals(1, events.size());
+        assertEquals("business-error", events.getFirst().event());
+        assertFalse(events.getFirst().data().contains("synchronous-service-error"));
     }
 
     @SuppressWarnings("unchecked")

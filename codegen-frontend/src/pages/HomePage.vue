@@ -1,10 +1,20 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
-import { addApp, listMyAppVoByPage, listGoodAppVoByPage } from '@/api/appController'
+import {
+  addApp,
+  getAppVoById,
+  listMyAppVoByPage,
+  listGoodAppVoByPage,
+} from '@/api/appController'
 import { getDeployUrl } from '@/config/env'
+import {
+  clearPendingAppCover,
+  getPendingAppCovers,
+  isPendingAppCoversStorageEvent,
+} from '@/utils/appCoverRefresh'
 import AppCard from '@/components/AppCard.vue'
 
 const router = useRouter()
@@ -29,6 +39,11 @@ const featuredAppsPage = reactive({
   pageSize: 6,
   total: 0,
 })
+
+const COVER_REFRESH_INTERVAL_MS = 2000
+let coverRefreshTimer: ReturnType<typeof window.setTimeout> | undefined
+let homePageUnmounted = false
+let coverRefreshRunning = false
 
 // 设置提示词
 const setPrompt = (prompt: string) => {
@@ -114,6 +129,52 @@ const loadFeaturedApps = async () => {
   }
 }
 
+const updateAppInLists = (updatedApp: API.AppVO) => {
+  const replaceApp = (apps: API.AppVO[]) =>
+    apps.map((app) => (String(app.id) === String(updatedApp.id) ? updatedApp : app))
+
+  myApps.value = replaceApp(myApps.value)
+  featuredApps.value = replaceApp(featuredApps.value)
+}
+
+const schedulePendingCoverRefresh = () => {
+  if (homePageUnmounted || coverRefreshTimer || getPendingAppCovers().length === 0) return
+  coverRefreshTimer = window.setTimeout(() => {
+    coverRefreshTimer = undefined
+    void refreshPendingAppCovers()
+  }, COVER_REFRESH_INTERVAL_MS)
+}
+
+const refreshPendingAppCovers = async () => {
+  if (homePageUnmounted || coverRefreshRunning) return
+
+  const pendingAppCovers = getPendingAppCovers()
+  if (pendingAppCovers.length === 0) return
+
+  coverRefreshRunning = true
+  try {
+    await Promise.all(
+      pendingAppCovers.map(async (pendingAppCover) => {
+        try {
+          const res = await getAppVoById({ id: pendingAppCover.appId as unknown as number })
+          const updatedApp = res.data.code === 0 ? res.data.data : undefined
+          if (!updatedApp) return
+
+          updateAppInLists(updatedApp)
+          if (updatedApp.cover && updatedApp.cover !== pendingAppCover.previousCover) {
+            clearPendingAppCover(pendingAppCover.appId)
+          }
+        } catch (error) {
+          console.warn(`刷新应用 ${pendingAppCover.appId} 封面失败：`, error)
+        }
+      }),
+    )
+  } finally {
+    coverRefreshRunning = false
+    schedulePendingCoverRefresh()
+  }
+}
+
 // 查看对话
 const viewChat = (appId: string | number | undefined) => {
   if (appId) {
@@ -131,28 +192,39 @@ const viewWork = (app: API.AppVO) => {
 
 // 格式化时间函数已移除，不再需要显示创建时间
 
+// 鼠标跟随光效
+const handleMouseMove = (e: MouseEvent) => {
+  const { clientX, clientY } = e
+  const { innerWidth, innerHeight } = window
+  const x = (clientX / innerWidth) * 100
+  const y = (clientY / innerHeight) * 100
+
+  document.documentElement.style.setProperty('--mouse-x', `${x}%`)
+  document.documentElement.style.setProperty('--mouse-y', `${y}%`)
+}
+
+const handlePendingCoverStorage = (event: StorageEvent) => {
+  if (isPendingAppCoversStorageEvent(event)) {
+    schedulePendingCoverRefresh()
+  }
+}
+
 // 页面加载时获取数据
-onMounted(() => {
-  loadMyApps()
-  loadFeaturedApps()
-
-  // 鼠标跟随光效
-  const handleMouseMove = (e: MouseEvent) => {
-    const { clientX, clientY } = e
-    const { innerWidth, innerHeight } = window
-    const x = (clientX / innerWidth) * 100
-    const y = (clientY / innerHeight) * 100
-
-    document.documentElement.style.setProperty('--mouse-x', `${x}%`)
-    document.documentElement.style.setProperty('--mouse-y', `${y}%`)
-  }
-
+onMounted(async () => {
+  await Promise.all([loadMyApps(), loadFeaturedApps()])
+  void refreshPendingAppCovers()
   document.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('storage', handlePendingCoverStorage)
+})
 
-  // 清理事件监听器
-  return () => {
-    document.removeEventListener('mousemove', handleMouseMove)
+onUnmounted(() => {
+  homePageUnmounted = true
+  if (coverRefreshTimer) {
+    window.clearTimeout(coverRefreshTimer)
+    coverRefreshTimer = undefined
   }
+  document.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('storage', handlePendingCoverStorage)
 })
 </script>
 

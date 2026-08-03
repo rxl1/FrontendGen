@@ -2,9 +2,11 @@ package com.renix.codegen.controller;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.renix.codegen.annotation.AuthCheck;
+import com.renix.codegen.ai.model.message.StreamErrorMessage;
 import com.renix.codegen.common.BaseResponse;
 import com.renix.codegen.common.DeleteRequest;
 import com.renix.codegen.common.ResultUtils;
@@ -23,6 +25,7 @@ import com.renix.codegen.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
@@ -37,7 +40,12 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/app")
+@Slf4j
 public class AppController {
+
+    private static final String AI_STREAM_ERROR_CODE = "AI_STREAM_ERROR";
+
+    private static final String AI_STREAM_ERROR_MESSAGE = "AI 生成过程中出现异常，请重试";
 
     @Resource
     private AppService appService;
@@ -301,8 +309,9 @@ public class AppController {
         // 禁止浏览器和反向代理缓存、转换或缓冲 SSE 数据，确保每个事件及时到达前端。
         response.setHeader("Cache-Control", "no-cache, no-transform");
         response.setHeader("X-Accel-Buffering", "no");
-        // 调用服务生成代码（流式）
-        Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
+        // 使用 defer 将服务初始化阶段的同步异常也转换为 Flux 异常，
+        // 确保权限、配置或模型初始化失败时仍能通过统一的 SSE 错误事件返回。
+        Flux<String> contentFlux = Flux.defer(() -> appService.chatToGenCode(appId, message, loginUser));
         // 转换为 ServerSentEvent 格式
         return contentFlux
                 .map(chunk -> {
@@ -317,7 +326,21 @@ public class AppController {
                                 .event("done")
                                 .data("")
                                 .build()
-                ));
+                ))
+                .onErrorResume(error -> {
+                    // SSE 响应开始后不能再交给普通全局异常处理器返回 BaseResponse，
+                    // 否则会因为 Content-Type 已是 text/event-stream 而触发二次转换异常。
+                    log.warn("AI 生成流异常，已转换为 business-error SSE 事件: appId={}, errorType={}",
+                            appId, error.getClass().getSimpleName());
+                    StreamErrorMessage errorMessage = new StreamErrorMessage(
+                            AI_STREAM_ERROR_CODE,
+                            AI_STREAM_ERROR_MESSAGE
+                    );
+                    return Flux.just(ServerSentEvent.<String>builder()
+                            .event("business-error")
+                            .data(JSONUtil.toJsonStr(errorMessage))
+                            .build());
+                });
     }
 
     /**

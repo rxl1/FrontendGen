@@ -230,6 +230,7 @@ import aiAvatar from '@/assets/aiAvatar.png'
 import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
 import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
 import { AiStreamAccumulator, normalizeStoredAiMessage, parseStreamMessage } from '@/utils/aiStream'
+import { markAppCoverPending } from '@/utils/appCoverRefresh'
 
 import {
   CloudUploadOutlined,
@@ -246,7 +247,7 @@ const loginUserStore = useLoginUserStore()
 
 // 应用信息
 const appInfo = ref<API.AppVO>()
-const appId = ref<any>()
+const appId = ref<string>()
 
 // 对话相关
 interface Message {
@@ -311,7 +312,7 @@ const loadChatHistory = async (isLoadMore = false) => {
   loadingHistory.value = true
   try {
     const params: API.listAppChatHistoryParams = {
-      appId: appId.value,
+      appId: appId.value as unknown as number,
       pageSize: 10,
     }
     // 如果是加载更多，传递最后一条消息的创建时间作为游标
@@ -574,7 +575,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
       }, 1000)
     })
 
-    // 处理business-error事件（后端限流等错误）
+    // 处理 business-error 事件（限流、模型工具调用重试后仍失败等服务端错误）。
     eventSource.addEventListener('business-error', function (event: MessageEvent) {
       if (streamCompleted) return
 
@@ -582,9 +583,12 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         const errorData = JSON.parse(event.data)
         console.error('SSE业务错误事件:', errorData)
 
-        // 显示具体的错误信息
+        // 保留已经流式展示的计划和成功工具调用，再追加错误提示，避免整段回答突然被覆盖。
         const errorMessage = errorData.message || '生成过程中出现错误'
-        messages.value[aiMessageIndex].content = `❌ ${errorMessage}`
+        const partialContent = streamAccumulator.toMarkdown()
+        messages.value[aiMessageIndex].content = partialContent
+          ? `${partialContent}\n\n> ❌ ${errorMessage}`
+          : `❌ ${errorMessage}`
         messages.value[aiMessageIndex].loading = false
         message.error(errorMessage)
 
@@ -698,6 +702,7 @@ const deployApp = async () => {
     })
 
     if (res.data.code === 0 && res.data.data) {
+      markAppCoverPending(String(appId.value), appInfo.value?.cover)
       deployUrl.value = res.data.data
       deployModalVisible.value = true
       message.success('部署成功')

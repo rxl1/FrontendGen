@@ -13,6 +13,8 @@ import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.service.AiServices;
+import dev.langchain4j.service.tool.ToolArgumentsErrorHandler;
+import dev.langchain4j.service.tool.ToolErrorHandlerResult;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -93,6 +95,9 @@ public class AiCodeGeneratorServiceFactory {
                     .streamingChatModel(openAiStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
                     .tools(new FileWriteTool(codeGenType.getValue()))
+                    // 工具参数由模型生成，长代码中的引号或反斜杠偶尔会导致 JSON 不合法。
+                    // 将参数错误反馈给模型，让它只重试失败的文件，避免一次格式错误终止整个 SSE 流。
+                    .toolArgumentsErrorHandler(malformedToolArgumentsRetryHandler())
                     // 处理工具调用幻觉问题
                     .hallucinatedToolNameStrategy(toolExecutionRequest ->
                             ToolExecutionResultMessage.from(toolExecutionRequest,
@@ -107,6 +112,31 @@ public class AiCodeGeneratorServiceFactory {
                     .build();
             default ->
                     throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型: " + codeGenType.getValue());
+        };
+    }
+
+    /**
+     * 创建工具参数纠错处理器。
+     *
+     * <p>LangChain4j 默认会把参数解析异常直接抛出。这里返回一条安全的工具结果，
+     * 让模型获得一次自我修正机会；日志只记录工具名和参数长度，不记录用户生成的完整代码。</p>
+     */
+    static ToolArgumentsErrorHandler malformedToolArgumentsRetryHandler() {
+        return (error, context) -> {
+            String toolName = context.toolExecutionRequest() == null
+                    ? "unknown"
+                    : context.toolExecutionRequest().name();
+            String arguments = context.toolExecutionRequest() == null
+                    ? null
+                    : context.toolExecutionRequest().arguments();
+            int argumentLength = arguments == null ? 0 : arguments.length();
+            log.warn("工具参数解析失败，已反馈模型重试: tool={}, argumentLength={}, errorType={}",
+                    toolName, argumentLength, error.getClass().getSimpleName());
+            return ToolErrorHandlerResult.text(
+                    "工具参数格式错误，当前工具没有执行。请重新调用 writeFile，只重试刚才失败的文件；"
+                            + "relativeFilePath 和 content 必须是合法字符串，content 中的双引号、反斜杠和换行"
+                            + "必须由工具调用协议正确转义，不要在一次调用中写入多个文件。"
+            );
         };
     }
 

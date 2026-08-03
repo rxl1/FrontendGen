@@ -1,6 +1,8 @@
 export interface StreamMessagePayload {
-  type?: 'ai_response' | 'tool_request' | 'tool_executed'
+  type?: 'ai_response' | 'tool_request' | 'tool_executed' | 'error'
   content?: string
+  code?: string
+  message?: string
   d?: string
   id?: string
   index?: number
@@ -25,7 +27,7 @@ interface ToolOutputSegment {
 
 type OutputSegment = TextOutputSegment | ToolOutputSegment
 
-const STREAM_MESSAGE_TYPES = new Set(['ai_response', 'tool_request', 'tool_executed'])
+const STREAM_MESSAGE_TYPES = new Set(['ai_response', 'tool_request', 'tool_executed', 'error'])
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

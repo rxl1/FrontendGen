@@ -99,23 +99,6 @@
       <artifactId>HikariCP</artifactId>
       <version>7.1.0</version>
     </dependency>
-    <!-- redis连接池 -->
-<!--    <dependency>-->
-<!--      <groupId>org.apache.commons</groupId>-->
-<!--      <artifactId>commons-pool2</artifactId>-->
-<!--      <version>2.13.1</version>-->
-<!--    </dependency>-->
-<!--    &lt;!&ndash; Redis &ndash;&gt;-->
-<!--    <dependency>-->
-<!--      <groupId>org.springframework.boot</groupId>-->
-<!--      <artifactId>spring-boot-starter-data-redis</artifactId>-->
-<!--    </dependency>-->
-<!--    &lt;!&ndash; Redisson &ndash;&gt;-->
-<!--    <dependency>-->
-<!--      <groupId>org.redisson</groupId>-->
-<!--      <artifactId>redisson-spring-boot-starter</artifactId>-->
-<!--      <version>4.6.1</version>-->
-<!--    </dependency>-->
     <!-- spring aop 切面-->
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -160,6 +143,19 @@
       <groupId>org.springframework.session</groupId>
       <artifactId>spring-session-data-redis</artifactId>
     </dependency>
+    <!-- Selenium 网页截图依赖 -->
+    <dependency>
+      <groupId>org.seleniumhq.selenium</groupId>
+      <artifactId>selenium-java</artifactId>
+      <version>4.33.0</version>
+    </dependency>
+    <!-- 腾讯 COS 对象存储依赖 -->
+    <dependency>
+      <groupId>com.qcloud</groupId>
+      <artifactId>cos_api</artifactId>
+      <version>5.6.227</version>
+    </dependency>
+
 
 
 
