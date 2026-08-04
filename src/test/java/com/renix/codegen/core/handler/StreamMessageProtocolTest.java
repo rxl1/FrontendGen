@@ -7,6 +7,7 @@ import com.renix.codegen.ai.model.message.ToolRequestMessage;
 import com.renix.codegen.model.entity.User;
 import com.renix.codegen.model.enums.CodeGenTypeEnum;
 import com.renix.codegen.service.ChatHistoryService;
+import dev.langchain4j.exception.InternalServerException;
 import dev.langchain4j.model.chat.response.PartialToolCall;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
@@ -110,6 +111,38 @@ class StreamMessageProtocolTest {
         assertTrue(history.contains("[选择工具] 写入文件"));
         assertTrue(history.contains("[工具调用] 写入文件 `index.html`"));
         assertTrue(history.contains("<h1>你好</h1>"));
+    }
+
+    @Test
+    void shouldStoreFriendlyErrorWithoutProviderPayload() {
+        User user = new User();
+        user.setId(9L);
+
+        AtomicReference<Object[]> jsonSavedMessage = new AtomicReference<>();
+        new JsonMessageStreamHandler()
+                .handle(
+                        Flux.error(new InternalServerException("provider-sensitive-error")),
+                        recordingHistoryService(jsonSavedMessage),
+                        7L,
+                        user,
+                        CodeGenTypeEnum.MULTI_FILE
+                )
+                .onErrorResume(error -> Flux.empty())
+                .blockLast();
+
+        AtomicReference<Object[]> textSavedMessage = new AtomicReference<>();
+        new SimpleTextStreamHandler()
+                .handle(
+                        Flux.error(new InternalServerException("provider-sensitive-error")),
+                        recordingHistoryService(textSavedMessage),
+                        7L,
+                        user
+                )
+                .onErrorResume(error -> Flux.empty())
+                .blockLast();
+
+        assertEquals("AI 服务暂时繁忙，请稍后重试", jsonSavedMessage.get()[1]);
+        assertEquals("AI 服务暂时繁忙，请稍后重试", textSavedMessage.get()[1]);
     }
 
     private ChatHistoryService recordingHistoryService(AtomicReference<Object[]> savedMessage) {

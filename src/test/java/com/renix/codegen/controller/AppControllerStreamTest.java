@@ -2,6 +2,9 @@ package com.renix.codegen.controller;
 
 import com.renix.codegen.ai.model.message.AiResponseMessage;
 import com.renix.codegen.ai.model.message.StreamErrorMessage;
+import com.renix.codegen.exception.BusinessException;
+import com.renix.codegen.exception.ErrorCode;
+import dev.langchain4j.exception.InternalServerException;
 import com.renix.codegen.model.entity.User;
 import com.renix.codegen.service.AppService;
 import com.renix.codegen.service.UserService;
@@ -137,6 +140,78 @@ class AppControllerStreamTest {
         assertEquals(1, events.size());
         assertEquals("business-error", events.getFirst().event());
         assertFalse(events.getFirst().data().contains("synchronous-service-error"));
+    }
+
+    @Test
+    void shouldExposeSafeBusinessErrorMessage() {
+        User loginUser = new User();
+        loginUser.setId(9L);
+
+        UserService userService = proxy(UserService.class, (methodName, args) -> {
+            if ("getLoginUser".equals(methodName)) return loginUser;
+            return null;
+        });
+        AppService appService = proxy(AppService.class, (methodName, args) -> {
+            if ("chatToGenCode".equals(methodName)) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用代码生成类型错误");
+            }
+            return null;
+        });
+
+        AppController controller = new AppController();
+        ReflectionTestUtils.setField(controller, "userService", userService);
+        ReflectionTestUtils.setField(controller, "appService", appService);
+
+        ServerSentEvent<String> event = controller.chatToGenCode(
+                        7L,
+                        "修改标题",
+                        new MockHttpServletRequest(),
+                        new MockHttpServletResponse()
+                )
+                .blockFirst();
+
+        assertEquals("business-error", event.event());
+        StreamErrorMessage errorMessage = cn.hutool.json.JSONUtil.toBean(
+                event.data(),
+                StreamErrorMessage.class
+        );
+        assertEquals("应用代码生成类型错误", errorMessage.getMessage());
+    }
+
+    @Test
+    void shouldExposeFriendlyMessageAfterTransientRetriesAreExhausted() {
+        User loginUser = new User();
+        loginUser.setId(9L);
+
+        UserService userService = proxy(UserService.class, (methodName, args) -> {
+            if ("getLoginUser".equals(methodName)) return loginUser;
+            return null;
+        });
+        AppService appService = proxy(AppService.class, (methodName, args) -> {
+            if ("chatToGenCode".equals(methodName)) {
+                return Flux.error(new InternalServerException("provider-sensitive-error"));
+            }
+            return null;
+        });
+
+        AppController controller = new AppController();
+        ReflectionTestUtils.setField(controller, "userService", userService);
+        ReflectionTestUtils.setField(controller, "appService", appService);
+
+        ServerSentEvent<String> event = controller.chatToGenCode(
+                        7L,
+                        "修改标题",
+                        new MockHttpServletRequest(),
+                        new MockHttpServletResponse()
+                )
+                .blockFirst();
+
+        StreamErrorMessage errorMessage = cn.hutool.json.JSONUtil.toBean(
+                event.data(),
+                StreamErrorMessage.class
+        );
+        assertEquals("AI 服务暂时繁忙，自动重试后仍未恢复，请稍后再试", errorMessage.getMessage());
+        assertFalse(event.data().contains("provider-sensitive-error"));
     }
 
     @SuppressWarnings("unchecked")

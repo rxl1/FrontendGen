@@ -43,8 +43,10 @@ public class SimpleTextStreamHandler {
                     chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                 })
                 .doOnError(error -> {
-                    // 如果AI回复失败，也要记录错误消息
-                    String errorMessage = "AI回复失败: " + error.getMessage();
+                    // 不把供应商响应、请求信息等内部细节写入聊天记录。
+                    String errorMessage = error instanceof dev.langchain4j.exception.RetriableException
+                            ? "AI 服务暂时繁忙，请稍后重试"
+                            : "AI 回复失败，请重试";
                     chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                 });
     }

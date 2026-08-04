@@ -72,11 +72,23 @@ public class AiCodeGeneratorFacade {
      * @return 流式响应
      */
     public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenTypeEnum, Long appId) {
+        String storedCodeGenType = codeGenTypeEnum == null ? null : codeGenTypeEnum.getValue();
+        return generateAndSaveCodeStream(userMessage, codeGenTypeEnum, appId, storedCodeGenType);
+    }
+
+    /**
+     * 使用应用实际保存的类型值生成代码，确保旧版目录前缀仍能被正确修改。
+     */
+    public Flux<String> generateAndSaveCodeStream(String userMessage,
+                                                  CodeGenTypeEnum codeGenTypeEnum,
+                                                  Long appId,
+                                                  String storedCodeGenType) {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "生成类型不能为空");
         }
         // 根据 appId 获取相应的 AI 服务实例
-        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenTypeEnum);
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory
+                .getAiCodeGeneratorService(appId, codeGenTypeEnum, storedCodeGenType);
         return switch (codeGenTypeEnum) {
             case HTML -> {
                 Flux<String> codeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);

@@ -4,6 +4,8 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.renix.codegen.ai.model.message.*;
+import com.renix.codegen.ai.tools.BaseTool;
+import com.renix.codegen.ai.tools.ToolManager;
 import com.renix.codegen.constant.AppConstant;
 import com.renix.codegen.core.builder.VueProjectBuilder;
 import com.renix.codegen.model.entity.User;
@@ -30,6 +32,9 @@ public class JsonMessageStreamHandler {
     @Resource
     private VueProjectBuilder vueProjectBuilder;
 
+    @Resource
+    private ToolManager toolManager;
+
     /**
      * 处理 TokenStream（MULTI_FILE、VUE_PROJECT）
      *
@@ -49,7 +54,7 @@ public class JsonMessageStreamHandler {
         // 用于跟踪已经见过的工具ID，判断是否是第一次调用
         Set<String> seenToolIds = new HashSet<>();
         return originFlux
-                .doOnNext(chunk -> collectHistoryContent(chunk, chatHistoryStringBuilder, seenToolIds))
+                .doOnNext(chunk -> handleJsonMessageChunk(chunk, chatHistoryStringBuilder, seenToolIds))
                 .doOnComplete(() -> {
                     // 流式响应完成后，添加 AI 消息到对话历史
                     String aiResponse = chatHistoryStringBuilder.toString();
@@ -61,46 +66,116 @@ public class JsonMessageStreamHandler {
                     }
                 })
                 .doOnError(error -> {
-                    // 如果AI回复失败，也要记录错误消息
-                    String errorMessage = "AI回复失败: " + error.getMessage();
+                    // 不把供应商响应、请求信息等内部细节写入聊天记录。
+                    String errorMessage = error instanceof dev.langchain4j.exception.RetriableException
+                            ? "AI 服务暂时繁忙，请稍后重试"
+                            : "AI 回复失败，请重试";
                     chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                 });
     }
 
+    ///**
+    // * 解析并收集 TokenStream 数据
+    // */
+    //private void collectHistoryContent(String chunk, StringBuilder chatHistoryStringBuilder, Set<String> seenToolIds) {
+    //    // handleJsonMessageChunk
+    //    // 解析 JSON
+    //    StreamMessage streamMessage = JSONUtil.toBean(chunk, StreamMessage.class);
+    //    StreamMessageTypeEnum typeEnum = StreamMessageTypeEnum.getEnumByValue(streamMessage.getType());
+    //    if (typeEnum == null) {
+    //        log.warn("忽略未知的流式消息: {}", chunk);
+    //        return;
+    //    }
+    //    switch (typeEnum) {
+    //        case AI_RESPONSE -> {
+    //            AiResponseMessage aiMessage = JSONUtil.toBean(chunk, AiResponseMessage.class);
+    //            String content = aiMessage.getContent();
+    //            if (content != null) {
+    //                chatHistoryStringBuilder.append(content);
+    //            }
+    //        }
+    //        case TOOL_REQUEST -> {
+    //            ToolRequestMessage toolRequestMessage = JSONUtil.toBean(chunk, ToolRequestMessage.class);
+    //            String toolId = toolRequestMessage.getId();
+    //            String toolName = toolRequestMessage.getName();
+    //            String toolKey = toolId != null ? toolId : toolRequestMessage.getName();
+    //            // 检查是否是第一次看到这个工具 ID
+    //            if (toolKey != null && seenToolIds.add(toolKey)) {
+    //                chatHistoryStringBuilder
+    //                        .append("\n\n> [选择工具] ")
+    //                        .append(getToolDisplayName(toolRequestMessage.getName()))
+    //                        .append("\n\n");
+    //            }
+    //        }
+    //        case TOOL_EXECUTED -> {
+    //            ToolExecutedMessage toolExecutedMessage = JSONUtil.toBean(chunk, ToolExecutedMessage.class);
+    //            appendToolExecution(chatHistoryStringBuilder, toolExecutedMessage);
+    //        }
+    //    }
+    //}
+
     /**
      * 解析并收集 TokenStream 数据
      */
-    private void collectHistoryContent(String chunk, StringBuilder chatHistoryStringBuilder, Set<String> seenToolIds) {
+    private String handleJsonMessageChunk(String chunk, StringBuilder chatHistoryStringBuilder, Set<String> seenToolIds) {
         // 解析 JSON
         StreamMessage streamMessage = JSONUtil.toBean(chunk, StreamMessage.class);
         StreamMessageTypeEnum typeEnum = StreamMessageTypeEnum.getEnumByValue(streamMessage.getType());
         if (typeEnum == null) {
             log.warn("忽略未知的流式消息: {}", chunk);
-            return;
+            return "";
         }
         switch (typeEnum) {
             case AI_RESPONSE -> {
                 AiResponseMessage aiMessage = JSONUtil.toBean(chunk, AiResponseMessage.class);
-                String content = aiMessage.getContent();
-                if (content != null) {
-                    chatHistoryStringBuilder.append(content);
+                String data = aiMessage.getContent();
+                // 直接拼接响应
+                if (data != null) {
+                    chatHistoryStringBuilder.append(data);
+                    return data;
                 }
+                return "";
             }
             case TOOL_REQUEST -> {
                 ToolRequestMessage toolRequestMessage = JSONUtil.toBean(chunk, ToolRequestMessage.class);
                 String toolId = toolRequestMessage.getId();
-                String toolKey = toolId != null ? toolId : toolRequestMessage.getName();
+                String toolName = toolRequestMessage.getName();
                 // 检查是否是第一次看到这个工具 ID
-                if (toolKey != null && seenToolIds.add(toolKey)) {
-                    chatHistoryStringBuilder
-                            .append("\n\n> [选择工具] ")
-                            .append(getToolDisplayName(toolRequestMessage.getName()))
-                            .append("\n\n");
+                if (toolId != null && !seenToolIds.contains(toolId)) {
+                    // 第一次调用这个工具，记录 ID 并完整返回工具信息
+                    seenToolIds.add(toolId);
+                    // 根据工具名称获取工具实例
+                    BaseTool tool = toolManager == null ? null : toolManager.getTool(toolName);
+                    // 动态创建的 writeFile 不在全局 ToolManager 中，使用兼容展示格式。
+                    String output = tool == null
+                            ? String.format("\n\n> [选择工具] %s\n\n", getToolDisplayName(toolName))
+                            : tool.generateToolRequestResponse();
+                    chatHistoryStringBuilder.append(output);
+                    return output;
+                } else {
+                    // 不是第一次调用这个工具，直接返回空
+                    return "";
                 }
             }
             case TOOL_EXECUTED -> {
                 ToolExecutedMessage toolExecutedMessage = JSONUtil.toBean(chunk, ToolExecutedMessage.class);
-                appendToolExecution(chatHistoryStringBuilder, toolExecutedMessage);
+                JSONObject jsonObject = JSONUtil.parseObj(toolExecutedMessage.getArguments());
+                // 根据工具名称获取工具实例
+                String toolName = toolExecutedMessage.getName();
+                BaseTool tool = toolManager == null ? null : toolManager.getTool(toolName);
+                if (tool == null) {
+                    appendToolExecution(chatHistoryStringBuilder, toolExecutedMessage);
+                    return "";
+                }
+                String result = tool.generateToolExecutedResult(jsonObject);
+                // 输出前端和要持久化的内容
+                String output = String.format("\n\n%s\n\n", result);
+                chatHistoryStringBuilder.append(output);
+                return output;
+            }
+            default -> {
+                log.error("不支持的消息类型: {}", typeEnum);
+                return "";
             }
         }
     }

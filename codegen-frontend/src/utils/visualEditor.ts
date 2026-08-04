@@ -20,6 +20,7 @@ export interface ElementInfo {
 export interface VisualEditorOptions {
   onElementSelected?: (elementInfo: ElementInfo) => void
   onElementHover?: (elementInfo: ElementInfo) => void
+  onError?: (errorMessage: string) => void
 }
 
 export class VisualEditor {
@@ -43,12 +44,27 @@ export class VisualEditor {
    */
   enableEditMode() {
     if (!this.iframe) {
-      return
+      this.options.onError?.('预览页面尚未加载完成')
+      return false
     }
+
+    try {
+      // 可视化编辑依赖直接向 iframe 注入脚本，因此预览页面必须与当前页面同源。
+      if (!this.iframe.contentDocument) {
+        this.options.onError?.('无法进入编辑模式：预览页面与当前页面不同源')
+        return false
+      }
+    } catch (error) {
+      console.error('无法访问预览页面：', error)
+      this.options.onError?.('无法进入编辑模式：预览页面与当前页面不同源')
+      return false
+    }
+
     this.isEditMode = true
     setTimeout(() => {
       this.injectEditScript()
     }, 300)
+    return true
   }
 
   /**
@@ -148,32 +164,31 @@ export class VisualEditor {
   private injectEditScript() {
     if (!this.iframe) return
 
-    const waitForIframeLoad = () => {
-      try {
-        if (this.iframe!.contentWindow && this.iframe!.contentDocument) {
-          // 检查是否已经注入过脚本
-          if (this.iframe!.contentDocument.getElementById('visual-edit-script')) {
-            this.sendMessageToIframe({
-              type: 'TOGGLE_EDIT_MODE',
-              editMode: true,
-            })
-            return
-          }
-
-          const script = this.generateEditScript()
-          const scriptElement = this.iframe!.contentDocument.createElement('script')
-          scriptElement.id = 'visual-edit-script'
-          scriptElement.textContent = script
-          this.iframe!.contentDocument.head.appendChild(scriptElement)
-        } else {
-          setTimeout(waitForIframeLoad, 100)
-        }
-      } catch {
-        // 静默处理注入失败
+    try {
+      const iframeDocument = this.iframe.contentDocument
+      if (!this.iframe.contentWindow || !iframeDocument) {
+        throw new Error('iframe document is not accessible')
       }
-    }
 
-    waitForIframeLoad()
+      // 检查是否已经注入过脚本
+      if (iframeDocument.getElementById('visual-edit-script')) {
+        this.sendMessageToIframe({
+          type: 'TOGGLE_EDIT_MODE',
+          editMode: true,
+        })
+        return
+      }
+
+      const script = this.generateEditScript()
+      const scriptElement = iframeDocument.createElement('script')
+      scriptElement.id = 'visual-edit-script'
+      scriptElement.textContent = script
+      iframeDocument.head.appendChild(scriptElement)
+    } catch (error) {
+      this.isEditMode = false
+      console.error('注入可视化编辑脚本失败：', error)
+      this.options.onError?.('进入编辑模式失败，请刷新页面后重试')
+    }
   }
 
   /**
@@ -259,8 +274,10 @@ export class VisualEditor {
         // 获取元素信息
         function getElementInfo(element) {
           const rect = element.getBoundingClientRect();
-          // 获取 HTML 文件名后面的部分（查询参数和锚点）
-          let pagePath = window.location.search + window.location.hash;
+          // 获取页面自身的查询参数和锚点，排除预览系统添加的缓存参数。
+          const pageUrl = new URL(window.location.href);
+          pageUrl.searchParams.delete('_preview');
+          let pagePath = pageUrl.search + pageUrl.hash;
           // 如果没有查询参数和锚点，则显示为空
           if (!pagePath) {
             pagePath = '';

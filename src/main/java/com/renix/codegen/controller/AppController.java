@@ -361,11 +361,19 @@ public class AppController {
                 .onErrorResume(error -> {
                     // SSE 响应开始后不能再交给普通全局异常处理器返回 BaseResponse，
                     // 否则会因为 Content-Type 已是 text/event-stream 而触发二次转换异常。
-                    log.warn("AI 生成流异常，已转换为 business-error SSE 事件: appId={}, errorType={}",
-                            appId, error.getClass().getSimpleName());
+                    String clientMessage = AI_STREAM_ERROR_MESSAGE;
+                    if (error instanceof BusinessException businessException
+                            && StrUtil.isNotBlank(businessException.getMessage())) {
+                        // BusinessException 中是面向用户的业务提示，可以安全返回；模型供应商等内部异常仍统一脱敏。
+                        clientMessage = businessException.getMessage();
+                    } else if (error instanceof dev.langchain4j.exception.RetriableException) {
+                        clientMessage = "AI 服务暂时繁忙，自动重试后仍未恢复，请稍后再试";
+                    }
+                    log.warn("AI 生成流异常，已转换为 business-error SSE 事件: appId={}, errorType={}, message={}",
+                            appId, error.getClass().getSimpleName(), clientMessage);
                     StreamErrorMessage errorMessage = new StreamErrorMessage(
                             AI_STREAM_ERROR_CODE,
-                            AI_STREAM_ERROR_MESSAGE
+                            clientMessage
                     );
                     return Flux.just(ServerSentEvent.<String>builder()
                             .event("business-error")

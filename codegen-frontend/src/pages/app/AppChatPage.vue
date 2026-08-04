@@ -292,6 +292,10 @@ const visualEditor = new VisualEditor({
   onElementSelected: (elementInfo: ElementInfo) => {
     selectedElementInfo.value = elementInfo
   },
+  onError: (errorMessage: string) => {
+    isEditMode.value = false
+    message.error(errorMessage)
+  },
 })
 
 // 权限相关

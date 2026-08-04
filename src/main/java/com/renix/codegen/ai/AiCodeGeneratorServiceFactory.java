@@ -3,6 +3,7 @@ package com.renix.codegen.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.renix.codegen.ai.tools.FileWriteTool;
+import com.renix.codegen.ai.tools.ToolManager;
 import com.renix.codegen.exception.BusinessException;
 import com.renix.codegen.exception.ErrorCode;
 import com.renix.codegen.model.enums.CodeGenTypeEnum;
@@ -21,6 +22,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
+import java.util.Arrays;
 
 @Slf4j
 @Configuration
@@ -36,6 +38,9 @@ public class AiCodeGeneratorServiceFactory {
 
     @Resource
     private ChatHistoryService chatHistoryService;
+
+    @Resource
+    private ToolManager toolManager;
 
     /**
      * AI 服务实例缓存 <p>
@@ -67,8 +72,23 @@ public class AiCodeGeneratorServiceFactory {
      * 根据 appId 获取服务（带缓存）
      */
     public AiCodeGeneratorService getAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenType) {
-        String cacheKey = buildCacheKey(appId, codeGenType);
-        return serviceCache.get(cacheKey, key -> createAiCodeGeneratorService(appId, codeGenType));
+        String storedCodeGenType = codeGenType == null ? null : codeGenType.getValue();
+        return getAiCodeGeneratorService(appId, codeGenType, storedCodeGenType);
+    }
+
+    /**
+     * 根据应用实际保存的类型值创建服务。
+     *
+     * <p>旧应用可能使用 {@code multi-file} 作为代码目录前缀。AI 写文件时必须继续使用
+     * 数据库中的原始值，否则会写入新的 {@code multi_file_*} 目录，导致预览仍显示旧代码。</p>
+     */
+    public AiCodeGeneratorService getAiCodeGeneratorService(long appId,
+                                                             CodeGenTypeEnum codeGenType,
+                                                             String storedCodeGenType) {
+        String outputDirectoryPrefix = validateOutputDirectoryPrefix(codeGenType, storedCodeGenType);
+        String cacheKey = buildCacheKey(appId, codeGenType, outputDirectoryPrefix);
+        return serviceCache.get(cacheKey,
+                key -> createAiCodeGeneratorService(appId, codeGenType, outputDirectoryPrefix));
     }
 
     /**
@@ -77,8 +97,16 @@ public class AiCodeGeneratorServiceFactory {
      * @param codeGenType 代码生成类型枚举
      * @return
      */
-    private AiCodeGeneratorService createAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenType) {
-        log.info("为 appId: {} 创建新的 AI 服务实例，类型: {}", appId, codeGenType);
+    private AiCodeGeneratorService createAiCodeGeneratorService(long appId,
+                                                                 CodeGenTypeEnum codeGenType,
+                                                                 String outputDirectoryPrefix) {
+        log.info("为 appId: {} 创建新的 AI 服务实例，类型: {}，目录前缀: {}",
+                appId, codeGenType, outputDirectoryPrefix);
+        StreamingChatModel retryingStreamingChatModel = new RetryingStreamingChatModel(
+                openAiStreamingChatModel,
+                3,
+                Duration.ofSeconds(1)
+        );
         // 根据 appId 构建独立的对话记忆
         MessageWindowChatMemory chatMemory = MessageWindowChatMemory
                 .builder()
@@ -92,9 +120,9 @@ public class AiCodeGeneratorServiceFactory {
             // 多文件和 Vue 项目生成，使用工具调用
             case MULTI_FILE, VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
-                    .streamingChatModel(openAiStreamingChatModel)
+                    .streamingChatModel(retryingStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool(codeGenType.getValue()))
+                    .tools(buildTools(codeGenType, outputDirectoryPrefix))
                     // 工具参数由模型生成，长代码中的引号或反斜杠偶尔会导致 JSON 不合法。
                     // 将参数错误反馈给模型，让它只重试失败的文件，避免一次格式错误终止整个 SSE 流。
                     .toolArgumentsErrorHandler(malformedToolArgumentsRetryHandler())
@@ -107,7 +135,7 @@ public class AiCodeGeneratorServiceFactory {
             // HTML 生成，使用流式对话模型
             case HTML -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
-                    .streamingChatModel(openAiStreamingChatModel)
+                    .streamingChatModel(retryingStreamingChatModel)
                     .chatMemory(chatMemory)
                     .build();
             default ->
@@ -150,13 +178,32 @@ public class AiCodeGeneratorServiceFactory {
     }
 
     /**
-     * 构造缓存键
-     *
-     * @param appId
+     * 验证输出目录前缀
      * @param codeGenType
+     * @param storedCodeGenType
      * @return
      */
-    private String buildCacheKey(long appId, CodeGenTypeEnum codeGenType) {
-        return appId + "_" + codeGenType.getValue();
+    static String validateOutputDirectoryPrefix(CodeGenTypeEnum codeGenType, String storedCodeGenType) {
+        if (codeGenType == null || CodeGenTypeEnum.getEnumByValue(storedCodeGenType) != codeGenType) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用代码生成类型错误");
+        }
+        return storedCodeGenType.trim();
+    }
+
+    private Object[] buildTools(CodeGenTypeEnum codeGenType, String outputDirectoryPrefix) {
+        FileWriteTool fileWriteTool = new FileWriteTool(outputDirectoryPrefix);
+        if (codeGenType == CodeGenTypeEnum.MULTI_FILE) {
+            // 当前通用读写工具仍以 vue_project 为目录前缀，多文件应用只注册目录正确的写入工具。
+            return new Object[]{fileWriteTool};
+        }
+        Object[] managedTools = toolManager.getAllTools();
+        Object[] tools = Arrays.copyOf(managedTools, managedTools.length + 1, Object[].class);
+        // FileWriteTool 的目录前缀与具体应用类型绑定，不能注册为全局单例。
+        tools[managedTools.length] = fileWriteTool;
+        return tools;
+    }
+
+    private String buildCacheKey(long appId, CodeGenTypeEnum codeGenType, String outputDirectoryPrefix) {
+        return appId + "_" + codeGenType.getValue() + "_" + outputDirectoryPrefix;
     }
 }

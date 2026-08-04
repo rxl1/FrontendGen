@@ -27,8 +27,10 @@ public enum CodeGenTypeEnum {
         if(ObjUtil.isEmpty(value)){
             return null;
         }
+        // 兼容早期版本写入数据库的连字符值（例如 multi-file）。
+        String normalizedValue = value.trim().replace('-', '_');
         for (CodeGenTypeEnum anEnum : CodeGenTypeEnum.values()) {
-            if (anEnum.value.equals(value)) {
+            if (anEnum.value.equals(normalizedValue)) {
                 return anEnum;
             }
         }
