@@ -16,8 +16,6 @@ import java.time.LocalDateTime;
 
 /**
  * 用户 实体类。
- *
- * @author <a href="https://github.com/liyupi">程序员鱼皮</a>
  */
 @Data
 @Builder
