@@ -6,8 +6,6 @@ import cn.hutool.json.JSONUtil;
 import com.renix.codegen.ai.model.message.*;
 import com.renix.codegen.ai.tools.BaseTool;
 import com.renix.codegen.ai.tools.ToolManager;
-import com.renix.codegen.constant.AppConstant;
-import com.renix.codegen.core.builder.VueProjectBuilder;
 import com.renix.codegen.model.entity.User;
 import com.renix.codegen.model.enums.ChatHistoryMessageTypeEnum;
 import com.renix.codegen.model.enums.CodeGenTypeEnum;
@@ -30,13 +28,10 @@ import java.util.Set;
 public class JsonMessageStreamHandler {
 
     @Resource
-    private VueProjectBuilder vueProjectBuilder;
-
-    @Resource
     private ToolManager toolManager;
 
     /**
-     * 处理 TokenStream（MULTI_FILE、VUE_PROJECT）
+     * 处理 Vue 项目的 TokenStream
      *
      * @param originFlux         原始流
      * @param chatHistoryService 聊天历史服务
@@ -59,11 +54,6 @@ public class JsonMessageStreamHandler {
                     // 流式响应完成后，添加 AI 消息到对话历史
                     String aiResponse = chatHistoryStringBuilder.toString();
                     chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-                    if (codeGenType == CodeGenTypeEnum.VUE_PROJECT) {
-                        // 异步构造Vue项目, Vue工程需要构建 dist，原生多文件项目无需构建
-                        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
-                        vueProjectBuilder.buildProjectAsync(projectPath);
-                    }
                 })
                 .doOnError(error -> {
                     // 不把供应商响应、请求信息等内部细节写入聊天记录。
@@ -146,7 +136,7 @@ public class JsonMessageStreamHandler {
                     seenToolIds.add(toolId);
                     // 根据工具名称获取工具实例
                     BaseTool tool = toolManager == null ? null : toolManager.getTool(toolName);
-                    // 动态创建的 writeFile 不在全局 ToolManager 中，使用兼容展示格式。
+                    // 未注册的工具使用兼容展示格式。
                     String output = tool == null
                             ? String.format("\n\n> [选择工具] %s\n\n", getToolDisplayName(toolName))
                             : tool.generateToolRequestResponse();

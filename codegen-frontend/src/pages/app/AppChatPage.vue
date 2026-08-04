@@ -582,6 +582,10 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
       isGenerating.value = false
       flushRender()
       eventSource?.close()
+      // 后端会在首次代码生成完成后异步生成封面，通知首页持续刷新封面字段。
+      if (!appInfo.value?.cover) {
+        markAppCoverPending(String(appId.value))
+      }
 
       // 延迟更新预览，确保后端已完成处理
       setTimeout(async () => {

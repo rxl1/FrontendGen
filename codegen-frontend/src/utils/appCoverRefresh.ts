@@ -1,5 +1,6 @@
 const PENDING_APP_COVERS_KEY = 'codegen:pending-app-covers'
-const PENDING_APP_COVER_TTL_MS = 5 * 60 * 1000
+// Vue 首次生成还需要执行 npm install 和构建，最长可能超过 5 分钟。
+const PENDING_APP_COVER_TTL_MS = 10 * 60 * 1000
 
 export interface PendingAppCover {
   appId: string

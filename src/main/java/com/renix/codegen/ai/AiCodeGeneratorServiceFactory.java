@@ -2,7 +2,6 @@ package com.renix.codegen.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.renix.codegen.ai.tools.FileWriteTool;
 import com.renix.codegen.ai.tools.ToolManager;
 import com.renix.codegen.exception.BusinessException;
 import com.renix.codegen.exception.ErrorCode;
@@ -22,7 +21,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
-import java.util.Arrays;
 
 @Slf4j
 @Configuration
@@ -117,12 +115,12 @@ public class AiCodeGeneratorServiceFactory {
         //  从数据库加载历史对话到记忆中
         chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
         return switch (codeGenType) {
-            // 多文件和 Vue 项目生成，使用工具调用
-            case MULTI_FILE, VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
+            //  Vue 项目生成，使用工具调用
+            case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
                     .streamingChatModel(retryingStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(buildTools(codeGenType, outputDirectoryPrefix))
+                    .tools(toolManager.getAllTools())
                     // 工具参数由模型生成，长代码中的引号或反斜杠偶尔会导致 JSON 不合法。
                     // 将参数错误反馈给模型，让它只重试失败的文件，避免一次格式错误终止整个 SSE 流。
                     .toolArgumentsErrorHandler(malformedToolArgumentsRetryHandler())
@@ -132,8 +130,8 @@ public class AiCodeGeneratorServiceFactory {
                                     "Error: there is no tool called " + toolExecutionRequest.name())
                     )
                     .build();
-            // HTML 生成，使用流式对话模型
-            case HTML -> AiServices.builder(AiCodeGeneratorService.class)
+            // HTML 和 多文件生成，使用流式对话模型
+            case HTML,MULTI_FILE -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
                     .streamingChatModel(retryingStreamingChatModel)
                     .chatMemory(chatMemory)
@@ -188,19 +186,6 @@ public class AiCodeGeneratorServiceFactory {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用代码生成类型错误");
         }
         return storedCodeGenType.trim();
-    }
-
-    private Object[] buildTools(CodeGenTypeEnum codeGenType, String outputDirectoryPrefix) {
-        FileWriteTool fileWriteTool = new FileWriteTool(outputDirectoryPrefix);
-        if (codeGenType == CodeGenTypeEnum.MULTI_FILE) {
-            // 当前通用读写工具仍以 vue_project 为目录前缀，多文件应用只注册目录正确的写入工具。
-            return new Object[]{fileWriteTool};
-        }
-        Object[] managedTools = toolManager.getAllTools();
-        Object[] tools = Arrays.copyOf(managedTools, managedTools.length + 1, Object[].class);
-        // FileWriteTool 的目录前缀与具体应用类型绑定，不能注册为全局单例。
-        tools[managedTools.length] = fileWriteTool;
-        return tools;
     }
 
     private String buildCacheKey(long appId, CodeGenTypeEnum codeGenType, String outputDirectoryPrefix) {

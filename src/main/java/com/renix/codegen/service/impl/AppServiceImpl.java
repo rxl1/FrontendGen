@@ -30,6 +30,7 @@ import com.renix.codegen.service.ScreenshotService;
 import com.renix.codegen.service.UserService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -37,6 +38,7 @@ import java.io.File;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +68,15 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+
+    @Value("${server.port:8123}")
+    private int serverPort;
+
+    @Value("${server.servlet.context-path:}")
+    private String serverContextPath;
+
+    /** 防止同一应用在短时间内重复执行首次封面生成任务。 */
+    private final Set<Long> previewCoverTasks = ConcurrentHashMap.newKeySet();
 
     @Override
     public AppVO getAppVO(App app) {
@@ -158,7 +169,11 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(
                 message, codeGenTypeEnum, appId, codeGenType);
         // 7. 收集 AI 响应的内容，并且在完成后保存记录到对话历史
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        Flux<String> handledStream = streamHandlerExecutor.doExecute(
+                codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        // 8. 新应用首次生成完成后，基于预览页面异步生成封面。
+        // doOnComplete 不会在模型生成失败或客户端取消连接时执行，避免截取未完成页面。
+        return handledStream.doOnComplete(() -> postProcessGeneratedAppAsync(appId, codeGenTypeEnum));
     }
 
     @Override
@@ -278,16 +293,97 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Thread.ofVirtual().name("app-screenshot-" + appId).start(() -> {
             log.info("开始异步生成应用封面，appId：{}，url：{}", appId, appUrl);
             try {
-                String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
-                App updateApp = new App();
-                updateApp.setId(appId);
-                updateApp.setCover(screenshotUrl);
-                boolean updated = this.updateById(updateApp);
-                ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
-                log.info("应用封面生成并更新成功，appId：{}，cover：{}", appId, screenshotUrl);
+                generateAndUpdateAppCover(appId, appUrl);
             } catch (Exception e) {
                 log.error("异步生成应用封面失败，appId：{}，url：{}", appId, appUrl, e);
             }
         });
+    }
+
+    /**
+     * 首次代码生成完成后，使用生成目录的预览页面创建应用封面。
+     * Vue 项目必须先完成构建，HTML 和多文件项目由代码流完成回调保证文件已经保存。
+     */
+    private void postProcessGeneratedAppAsync(Long appId, CodeGenTypeEnum codeGenType) {
+        Thread.ofVirtual().name("app-generation-post-process-" + appId).start(() -> {
+            try {
+                String projectDirName = codeGenType.getValue() + "_" + appId;
+                File projectDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName);
+                log.info("代码生成完成，开始执行应用后处理，appId：{}，类型：{}",
+                        appId, codeGenType.getValue());
+                // Vue 的预览依赖 dist；无论是否已有封面，每次生成后都需要重新构建。
+                if (codeGenType == CodeGenTypeEnum.VUE_PROJECT
+                        && !vueProjectBuilder.buildProject(projectDir.getAbsolutePath())) {
+                    log.error("Vue 项目构建失败，无法更新预览和生成应用封面，appId：{}，目录：{}",
+                            appId, projectDir.getAbsolutePath());
+                    return;
+                }
+
+                App currentApp = getById(appId);
+                if (currentApp == null) {
+                    log.warn("生成应用封面时应用不存在，appId：{}", appId);
+                    return;
+                }
+                if (StrUtil.isNotBlank(currentApp.getCover())) {
+                    log.debug("应用已有封面，跳过首次封面生成，appId：{}", appId);
+                    return;
+                }
+                if (!previewCoverTasks.add(appId)) {
+                    log.debug("应用封面生成任务已在执行，跳过重复任务，appId：{}", appId);
+                    return;
+                }
+
+                File previewEntry = codeGenType == CodeGenTypeEnum.VUE_PROJECT
+                        ? new File(projectDir, "dist/index.html")
+                        : new File(projectDir, "index.html");
+                try {
+                    if (!previewEntry.isFile()) {
+                        log.error("应用预览入口不存在，无法生成封面，appId：{}，文件：{}",
+                                appId, previewEntry.getAbsolutePath());
+                        return;
+                    }
+
+                    String previewUrl = buildGeneratedAppPreviewUrl(
+                            serverPort, serverContextPath, codeGenType, appId);
+                    log.info("开始生成预览应用封面，appId：{}，类型：{}，url：{}",
+                            appId, codeGenType.getValue(), previewUrl);
+                    generateAndUpdateAppCover(appId, previewUrl);
+                } finally {
+                    previewCoverTasks.remove(appId);
+                }
+            } catch (Exception e) {
+                log.error("生成预览应用封面失败，appId：{}，类型：{}",
+                        appId, codeGenType.getValue(), e);
+            }
+        });
+    }
+
+    private void generateAndUpdateAppCover(Long appId, String appUrl) {
+        String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
+        App updateApp = new App();
+        updateApp.setId(appId);
+        updateApp.setCover(screenshotUrl);
+        boolean updated = this.updateById(updateApp);
+        ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+        log.info("应用封面生成并更新成功，appId：{}，cover：{}", appId, screenshotUrl);
+    }
+
+    static String buildGeneratedAppPreviewUrl(int port,
+                                              String contextPath,
+                                              CodeGenTypeEnum codeGenType,
+                                              Long appId) {
+        String normalizedContextPath = StrUtil.blankToDefault(contextPath, "").trim();
+        if (!normalizedContextPath.isEmpty() && !normalizedContextPath.startsWith("/")) {
+            normalizedContextPath = "/" + normalizedContextPath;
+        }
+        while (normalizedContextPath.endsWith("/")) {
+            normalizedContextPath = normalizedContextPath.substring(0, normalizedContextPath.length() - 1);
+        }
+        String projectKey = codeGenType.getValue() + "_" + appId;
+        String entryPath = codeGenType == CodeGenTypeEnum.VUE_PROJECT
+                ? "/dist/index.html"
+                : "/";
+        return "http://127.0.0.1:" + port + normalizedContextPath
+                + "/static/" + projectKey + entryPath;
     }
 }

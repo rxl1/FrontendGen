@@ -70,6 +70,26 @@ class StreamMessageProtocolTest {
     }
 
     @Test
+    void shouldRouteMultiFileThroughPlainTextHandler() {
+        AtomicReference<Object[]> savedMessage = new AtomicReference<>();
+        ChatHistoryService historyService = recordingHistoryService(savedMessage);
+        User user = new User();
+        user.setId(9L);
+
+        List<String> output = new StreamHandlerExecutor()
+                .doExecute(Flux.just("```html\n", "<h1>多文件</h1>\n```"),
+                        historyService, 7L, user, CodeGenTypeEnum.MULTI_FILE)
+                .collectList()
+                .block();
+
+        assertEquals(2, output.size());
+        assertEquals("```html\n", JSONUtil.toBean(output.get(0), AiResponseMessage.class).getContent());
+        assertEquals("<h1>多文件</h1>\n```", JSONUtil.toBean(output.get(1), AiResponseMessage.class).getContent());
+        assertEquals(List.of(7L, "```html\n<h1>多文件</h1>\n```", "ai", 9L),
+                List.of(savedMessage.get()));
+    }
+
+    @Test
     void shouldKeepStructuredEventsForSseAndStoreReadableHistory() {
         AtomicReference<Object[]> savedMessage = new AtomicReference<>();
         ChatHistoryService historyService = recordingHistoryService(savedMessage);
