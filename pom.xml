@@ -127,6 +127,12 @@
       <artifactId>langchain4j-community-redis-spring-boot-starter</artifactId>
       <version>1.18.0-beta28</version>
     </dependency>
+    <!-- langgraph4j  -->
+    <dependency>
+      <groupId>org.bsc.langgraph4j</groupId>
+      <artifactId>langgraph4j-core</artifactId>
+      <version>1.8.22</version>
+    </dependency>
     <dependency>
       <groupId>redis.clients</groupId>
       <artifactId>jedis</artifactId>
@@ -155,9 +161,12 @@
       <artifactId>cos_api</artifactId>
       <version>5.6.227</version>
     </dependency>
-
-
-
+    <!-- 阿里云百炼dashscope-sdk-java -->
+    <dependency>
+      <groupId>com.alibaba</groupId>
+      <artifactId>dashscope-sdk-java</artifactId>
+      <version>2.22.28</version>
+    </dependency>
 
   </dependencies>
 
