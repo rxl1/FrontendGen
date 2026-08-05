@@ -45,4 +45,6 @@ application-dev.yaml
 tmp/
 .claude
 .firecrawl/
+FutureWork.md
+doc.md
 

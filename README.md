@@ -1,100 +1,146 @@
-# CodeGen - AI 代码生成平台
+# FrontendGen
 
-基于 Spring Boot + LangChain4j + Vue 3 的 AI 代码生成平台，支持通过自然语言描述生成前端代码。
+FrontendGen 是一个基于 Spring Boot、LangChain4j 和 Vue 3 开发的 AI 前端代码生成平台。用户只需描述网站需求，系统即可自动生成代码，并提供在线预览、持续对话修改、代码下载和部署能力。
 
-## ✨ 功能特性
+## 项目介绍
 
-- 🤖 **AI 代码生成**：通过自然语言描述生成 HTML/CSS/JS 代码
-- 📁 **多文件模式**：支持生成单文件 HTML 或多文件（HTML + CSS + JS）
-- 🔄 **流式输出**：支持 SSE 流式返回生成结果
-- 👤 **用户系统**：注册、登录、权限管理
-- 📖 **接口文档**：集成 Knife4j/OpenAPI 接口文档
+FrontendGen 将大模型能力与前端工程化流程结合，支持从需求分析到网站部署的完整链路。
 
-## 🛠️ 技术栈
+核心特点：
 
-### 后端
+- 自然语言生成网站，降低前端开发门槛
+- 支持单文件 HTML、多文件项目和 Vue 工程三种生成模式
+- 基于 SSE 流式返回生成过程和结果
+- 支持多轮对话修改、历史记录和代码持久化
+- 支持网站预览、源码下载、构建和部署
+- 支持图片搜索、页面截图和封面生成
 
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Spring Boot | 3.5.16 | 应用框架 |
-| LangChain4j | 1.18.x | AI 集成框架 |
-| MyBatis-Flex | 1.11.8 | ORM 框架 |
-| MySQL | 8.x | 数据库 |
-| Knife4j | 4.5.0 | 接口文档 |
-| Java | 21 | 编程语言 |
+## 项目预览
 
-### 前端
+### 首页
 
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Vue | 3.5 | 前端框架 |
-| Vite | 7.0 | 构建工具 |
-| Ant Design Vue | 4.x | UI 组件库 |
-| TypeScript | 5.8 | 类型系统 |
-| Pinia | 3.x | 状态管理 |
+![FrontendGen 首页](README.assets/p1.png)
 
-## 📁 项目结构
+### 应用管理
 
+![FrontendGen 应用管理](README.assets/p2.png)
+
+### 代码生成与预览
+
+![FrontendGen 代码生成与预览](README.assets/p3.png)
+
+## 功能特性
+
+### AI 代码生成
+
+- 根据用户需求自动选择代码生成模式
+- 流式生成 HTML、CSS、JavaScript 和 Vue 项目代码
+- 支持工具调用和多文件工程生成
+- 支持生成结果解析、保存和质量检查
+
+### 应用管理
+
+- 创建、修改、删除和查询应用
+- 查看个人应用和精选应用
+- 基于历史对话继续修改已生成网站
+- 下载应用源码并部署为静态站点
+
+### 用户管理
+
+- 用户注册、登录和退出
+- 基于 Redis 的 Session 会话管理
+- 普通用户与管理员权限控制
+
+## 技术架构
+
+```mermaid
+flowchart LR
+    A[Vue 3 前端] -->|HTTP / SSE| B[Spring Boot 服务]
+    B --> C[应用与用户服务]
+    B --> D[AI 代码生成核心]
+    D --> E[LangChain4j]
+    E --> F[大模型服务]
+    B --> G[(MySQL)]
+    B --> H[(Redis)]
+    D --> I[本地代码目录]
+    I --> J[Nginx 静态站点]
 ```
-CodeGen/
-├── src/main/java/com/renix/codegen/
-│   ├── ai/                          # AI 相关
-│   │   ├── model/                   # AI 模型（HtmlCodeResult, MultiFileCodeResult）
-│   │   ├── AiCodeGeneratorService.java      # AI 服务接口
-│   │   └── AiCodeGeneratorServiceFactory.java # 服务工厂
-│   ├── controller/                  # 控制器
-│   ├── core/                        # 核心模块
-│   │   ├── parser/                  # 代码解析器（策略模式）
-│   │   └── saver/                   # 文件保存器（模板方法模式）
-│   ├── model/                       # 数据模型
-│   │   ├── entity/                  # 实体类
-│   │   ├── dto/                     # 数据传输对象
-│   │   ├── vo/                      # 视图对象
-│   │   └── enums/                   # 枚举类
-│   ├── service/                     # 服务层
-│   ├── mapper/                      # MyBatis Mapper
-│   ├── config/                      # 配置类
-│   ├── exception/                   # 异常处理
-│   └── annotation/                  # 自定义注解
-├── src/main/resources/
-│   ├── application.yaml             # 主配置
-│   ├── application-dev.yaml         # 开发环境配置
-│   └── prompt/                      # AI 提示词模板
-├── codegen-frontend/                # 前端项目
-├── docker-compose.yaml              # Docker 配置
-└── pom.xml                          # Maven 配置
-```
 
-## 🚀 快速开始
+### 核心技术栈
+
+- 后端框架：Java 21、Spring Boot 3.5、Spring MVC
+- AI 框架：LangChain4j、LangGraph4j、Reactor
+- 数据访问：MyBatis-Flex、MySQL 8
+- 缓存与会话：Redis、Spring Session
+- 前端框架：Vue 3、TypeScript、Vite、Pinia
+- UI 组件：Ant Design Vue
+- 工程工具：Maven、npm、Docker Compose、Nginx
+- 外部服务：OpenAI 兼容模型、Pexels、腾讯云 COS、DashScope
+
+### 主要模块
+
+- `controller`：用户、应用、生成和文件接口
+- `service`：业务逻辑与应用管理
+- `ai`：大模型服务、路由和提示词
+- `core`：代码解析、保存、构建和流式处理
+- `generator`：HTML、多文件和 Vue 项目生成器
+- `langgraph4j`：基于工作流的实验性生成模块
+- `codegen-frontend`：Vue 3 前端项目
+
+## 安装部署
 
 ### 环境要求
 
-- Java 21+
-- Node.js 18+
-- MySQL 8.x
-- Maven 3.8+
+- JDK 21+
+- Maven 3.9+
+- Node.js 22+
+- MySQL 8.0+
+- Redis 6.0+
+- Chrome 或 Chromium，用于网站截图
+- Docker 和 Docker Compose，可选
 
-### 后端启动
+### 1. 启动基础服务
 
-1. **启动 MySQL**
+项目提供了 MySQL、Redis 和 Nginx 的 Docker Compose 配置：
 
 ```bash
-docker-compose up -d mysql
+docker compose up -d mysql redis-master
 ```
 
-2. **修改配置**
+也可以使用本地已经安装的 MySQL 和 Redis。
 
-编辑 `src/main/resources/application-dev.yaml`，配置数据库连接和 AI API Key。
+### 2. 初始化数据库
 
-3. **启动后端**
+创建数据库后，执行初始化脚本：
+
+```bash
+mysql -u root -p 数据库名 < src/main/resources/db/create_table.sql
+```
+
+脚本会创建用户表、应用表和对话历史表。
+
+### 3. 修改后端配置
+
+在 `src/main/resources/application-dev.yaml` 中配置以下内容：
+
+- MySQL 连接地址、用户名和密码
+- Redis 地址、端口和密码
+- OpenAI 兼容接口的地址、API Key 和模型名称
+- Pexels API Key
+- 腾讯云 COS 的 SecretId、SecretKey、地域和存储桶
+- DashScope API Key，可选
+
+`application-dev.yaml` 已被 Git 忽略，请勿将真实密钥提交到仓库。
+
+### 4. 启动后端
 
 ```bash
 mvn spring-boot:run
 ```
 
-后端启动在 `http://localhost:8123`
+后端默认地址：`http://localhost:8123/api`
 
-### 前端启动
+### 5. 启动前端
 
 ```bash
 cd codegen-frontend
@@ -102,429 +148,67 @@ npm install
 npm run dev
 ```
 
-前端启动在 `http://localhost:5173`
+前端默认地址：`http://localhost:5173`
 
-### 接口文档
+## 构建部署
 
-访问 `http://localhost:8123/api/doc.html` 查看 Knife4j 接口文档。
+### 后端构建
 
----
-
-## 🐳 Docker 部署
-
-### Docker Compose 服务
-
-本项目使用 Docker Compose 管理以下服务：
-
-| 服务 | 容器名 | 端口 | 说明 |
-|------|--------|------|------|
-| MySQL | codegen-mysql | 3306 | 数据库 |
-| Redis | codegen-redis-master | 6379 | 缓存 |
-| Nginx | codegen-nginx | 80, 443 | Web 服务器 |
-
-### Nginx 配置指南
-
-#### 目录结构
-
-```
-CodeGen/
-├── docker-compose.yaml
-├── data/nginx/
-│   ├── nginx.conf          # 主配置文件
-│   ├── conf.d/
-│   │   └── default.conf    # 站点配置
-│   └── logs/               # 日志目录
-└── codegen-frontend/
-    └── dist/               # 前端构建产物
+```bash
+mvn clean package -DskipTests
 ```
 
-#### docker-compose.yaml 配置
+生产环境通过 `prod` Profile 配置 MySQL 和 Redis，并使用外部环境变量保存敏感信息。
 
-```yaml
-services:
-  nginx:
-    image: nginx:alpine
-    container_name: codegen-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./data/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./data/nginx/conf.d:/etc/nginx/conf.d
-      - ./codegen-frontend/dist:/usr/share/nginx/html
-      - ./data/nginx/logs:/var/log/nginx
-    depends_on:
-      - mysql
-      - redis-master
-```
-
-#### nginx.conf（主配置）
-
-```nginx
-user  nginx;
-worker_processes  auto;
-
-error_log  /var/log/nginx/error.log warn;
-pid        /var/run/nginx.pid;
-
-events {
-    worker_connections  1024;
-}
-
-http {
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
-
-    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
-                      '$status $body_bytes_sent "$http_referer" '
-                      '"$http_user_agent" "$http_x_forwarded_for"';
-
-    access_log  /var/log/nginx/access.log  main;
-
-    sendfile        on;
-    keepalive_timeout  65;
-
-    include /etc/nginx/conf.d/*.conf;
-}
-```
-
-#### default.conf（站点配置）
-
-```nginx
-server {
-    listen       80;
-    server_name  localhost;
-
-    # 前端静态文件
-    location / {
-        root   /usr/share/nginx/html;
-        index  index.html index.htm;
-        try_files $uri $uri/ /index.html;  # Vue/React 路由支持
-    }
-
-    # API 反向代理
-    location /api/ {
-        proxy_pass http://host.docker.internal:8123/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # SSE 流式响应配置（可选）
-    location /api/app/chat/gen/code {
-        proxy_pass http://host.docker.internal:8123/api/app/chat/gen/code;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_buffering off;
-        proxy_cache off;
-        chunked_transfer_encoding off;
-    }
-
-    error_page   500 502 503 504  /50x.html;
-    location = /50x.html {
-        root   /usr/share/nginx/html;
-    }
-}
-```
-
-### 部署步骤
-
-1. **构建前端**
+### 前端构建
 
 ```bash
 cd codegen-frontend
+npm install
 npm run build
 ```
 
-2. **创建配置目录**
+构建结果位于 `codegen-frontend/dist`，可部署到 Nginx 或其他静态资源服务器。
+
+### 生成站点部署
+
+启动 Compose 中的 Nginx：
 
 ```bash
-mkdir -p data/nginx/conf.d data/nginx/logs
+docker compose up -d nginx
 ```
 
-3. **创建配置文件**
+Nginx 会挂载 `tmp/code_deploy`，用于访问系统发布的静态网站。当前 Docker Compose 只负责 MySQL、Redis 和生成站点 Nginx，后端与管理前端需要单独运行或部署。
 
-创建 `data/nginx/nginx.conf` 和 `data/nginx/conf.d/default.conf`（内容见上文）
+## 接口文档
 
-4. **启动服务**
+启动后端后访问：
 
-```bash
-docker compose up -d
+```text
+http://localhost:8123/api/doc.html
 ```
 
-5. **查看日志**
+OpenAPI 地址：
 
-```bash
-docker compose logs -f nginx
+```text
+http://localhost:8123/api/v3/api-docs
 ```
 
-### 常见问题
+## 项目结构
 
-| 问题 | 原因 | 解决方案 |
-|------|------|----------|
-| 挂载失败 | 文件/目录不存在 | 先创建文件和目录 |
-| 权限问题 | 目录是 root 创建的 | `sudo chown -R user:user ./data/nginx/` |
-| 语法错误 | 配置文件有特殊字符 | 检查反斜杠、分号等 |
-| 代理失败 | 后端地址错误 | 使用 `host.docker.internal` 访问宿主机 |
-
-### 关键点
-
-1. **文件必须先创建**：挂载的文件如果不存在，Docker 会创建为目录
-2. **路径使用相对路径**：`./data/nginx/nginx.conf` 而不是绝对路径
-3. **代理宿主机服务**：使用 `host.docker.internal` 而不是 `localhost`
-4. **SSE/WebSocket**：需要特殊配置（关闭缓冲）
-
----
-
-## 🎨 设计模式
-
-本项目在核心模块中使用了多种设计模式，提高代码的可维护性和扩展性。
-
-### 1. 策略模式（Strategy Pattern）— `core/parser` 包
-
-**场景**：不同类型代码的解析逻辑完全不同。
-
-```
-CodeParser<T> (策略接口)
-    │
-    ├── HtmlCodeParser (HTML 解析策略)
-    │
-    └── MultiFileCodeParser (多文件解析策略)
-            │
-            └── CodeParserExecutor (执行器 - 简单工厂)
+```text
+FrontendGen
+├── src/main/java/com/renix/codegen   后端源码
+├── src/main/resources                配置、SQL、Mapper 和提示词
+├── codegen-frontend                  Vue 3 前端
+├── data                              Docker 服务数据和 Nginx 配置
+├── tmp/code_output                   AI 生成的源码
+├── tmp/code_deploy                   已部署的静态网站
+├── docker-compose.yaml               基础服务编排
+└── pom.xml                           Maven 配置
 ```
 
-**代码示例**：
-
-```java
-// 策略接口
-public interface CodeParser<T> {
-    T parseCode(String codeContent);
-}
-
-// HTML 解析策略
-public class HtmlCodeParser implements CodeParser<HtmlCodeResult> {
-    @Override
-    public HtmlCodeResult parseCode(String codeContent) {
-        // 只提取 HTML 代码块
-        String htmlCode = extractHtmlCode(codeContent);
-        return new HtmlCodeResult(htmlCode);
-    }
-}
-
-// 多文件解析策略
-public class MultiFileCodeParser implements CodeParser<MultiFileCodeResult> {
-    @Override
-    public MultiFileCodeResult parseCode(String codeContent) {
-        // 提取 HTML + CSS + JS 三个代码块
-        String htmlCode = extractCodeByPattern(content, HTML_CODE_PATTERN);
-        String cssCode = extractCodeByPattern(content, CSS_CODE_PATTERN);
-        String jsCode = extractCodeByPattern(content, JS_CODE_PATTERN);
-        return new MultiFileCodeResult(htmlCode, cssCode, jsCode);
-    }
-}
-
-// 简单工厂 - 根据类型选择策略
-public class CodeParserExecutor {
-    public static Object executeParser(String codeContent, CodeGenTypeEnum type) {
-        return switch (type) {
-            case HTML -> htmlCodeParser.parseCode(codeContent);
-            case MULTI_FILE -> multiFileCodeParser.parseCode(codeContent);
-        };
-    }
-}
-```
-
-**为什么用策略模式**：两个解析器的流程完全不同，没有共同的算法骨架可以抽取。
-
----
-
-### 2. 模板方法模式（Template Method Pattern）— `core/saver` 包
-
-**场景**：不同文件类型的保存流程相同，只是保存的文件不同。
-
-```
-CodeFileSaverTemplate<T> (抽象模板)
-    │
-    ├── HtmlCodeFileSaverTemplate (保存单个 HTML)
-    │
-    └── MultiFileCodeFileSaverTemplate (保存 HTML + CSS + JS)
-            │
-            └── CodeFileSaverExecutor (执行器 - 简单工厂)
-```
-
-**代码示例**：
-
-```java
-// 抽象模板 - 定义算法骨架
-public abstract class CodeFileSaverTemplate<T> {
-    
-    // 模板方法：固定流程（final 不允许子类修改）
-    public final File saveCode(T result) {
-        validateInput(result);              // 1. 验证输入（共同）
-        String baseDirPath = buildUniqueDir();  // 2. 构建目录（共同）
-        saveFiles(result, baseDirPath);     // 3. 保存文件（差异！）
-        return new File(baseDirPath);       // 4. 返回目录（共同）
-    }
-    
-    // 抽象方法：子类必须实现
-    protected abstract void saveFiles(T result, String baseDirPath);
-}
-
-// HTML 保存器：只保存 index.html
-public class HtmlCodeFileSaverTemplate extends CodeFileSaverTemplate<HtmlCodeResult> {
-    @Override
-    protected void saveFiles(HtmlCodeResult result, String baseDirPath) {
-        writeToFile(baseDirPath, "index.html", result.getHtmlCode());
-    }
-}
-
-// 多文件保存器：保存 HTML + CSS + JS
-public class MultiFileCodeFileSaverTemplate extends CodeFileSaverTemplate<MultiFileCodeResult> {
-    @Override
-    protected void saveFiles(MultiFileCodeResult result, String baseDirPath) {
-        writeToFile(baseDirPath, "index.html", result.getHtmlCode());
-        writeToFile(baseDirPath, "style.css", result.getCssCode());
-        writeToFile(baseDirPath, "script.js", result.getJsCode());
-    }
-}
-```
-
-**为什么用模板方法模式**：两个保存器有共同的流程（验证→建目录→保存→返回），只是"保存文件"这一步不同。
-
----
-
-### 3. 简单工厂模式（Simple Factory Pattern）— `CodeParserExecutor` 和 `CodeFileSaverExecutor`
-
-**场景**：根据类型创建对应的解析器或保存器。
-
-```java
-// 解析器工厂
-public class CodeParserExecutor {
-    private static final HtmlCodeParser htmlCodeParser = new HtmlCodeParser();
-    private static final MultiFileCodeParser multiFileCodeParser = new MultiFileCodeParser();
-
-    public static Object executeParser(String codeContent, CodeGenTypeEnum type) {
-        return switch (type) {
-            case HTML -> htmlCodeParser.parseCode(codeContent);
-            case MULTI_FILE -> multiFileCodeParser.parseCode(codeContent);
-        };
-    }
-}
-
-// 保存器工厂
-public class CodeFileSaverExecutor {
-    private static final HtmlCodeFileSaverTemplate htmlCodeFileSaver = new HtmlCodeFileSaverTemplate();
-    private static final MultiFileCodeFileSaverTemplate multiFileCodeFileSaver = new MultiFileCodeFileSaverTemplate();
-
-    public static File executeSaver(Object codeResult, CodeGenTypeEnum type) {
-        return switch (type) {
-            case HTML -> htmlCodeFileSaver.saveCode((HtmlCodeResult) codeResult);
-            case MULTI_FILE -> multiFileCodeFileSaver.saveCode((MultiFileCodeResult) codeResult);
-        };
-    }
-}
-```
-
----
-
-### 设计模式对比
-
-| 包 | 使用模式 | 核心区别 |
-|----|----------|----------|
-| `core/parser` | **策略模式** | 解析流程完全不同，每个策略独立 |
-| `core/saver` | **模板方法模式** | 保存流程相同，只是保存文件不同 |
-
-**选择原则**：
-- **有共同算法骨架** → 模板方法（父类定义流程，子类填充细节）
-- **没有共同流程** → 策略模式（每个算法独立，可互换）
-
----
-
-## 📄 API 接口
-
-### 用户相关
-
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/user/register` | POST | 用户注册 |
-| `/api/user/login` | POST | 用户登录 |
-| `/api/user/get/login` | GET | 获取当前登录用户 |
-| `/api/user/logout` | POST | 用户登出 |
-
-### AI 代码生成
-
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/ai/code/gen/html` | POST | 生成 HTML 代码 |
-| `/api/ai/code/gen/multi-file` | POST | 生成多文件代码 |
-| `/api/ai/code/gen/html/stream` | GET | 流式生成 HTML |
-| `/api/ai/code/gen/multi-file/stream` | GET | 流式生成多文件 |
-
----
-
-## 🔧 配置说明
-
-### AI 配置（application-dev.yaml）
-
-```yaml
-langchain4j:
-  open-ai:
-    chat-model:
-      base-url: https://api.deepseek.com  # AI API 地址
-      api-key: your-api-key                 # API Key
-      model-name: deepseek-v4-flash         # 模型名称
-      max-tokens: 8192                      # 最大 token 数
-    streaming-chat-model:                   # 流式模型配置
-      base-url: https://api.deepseek.com
-      api-key: your-api-key
-      model-name: deepseek-v4-flash
-```
-
----
-
-## 📝 开发说明
-
-### 添加新的代码生成类型
-
-1. 在 `CodeGenTypeEnum` 中添加新枚举
-2. 在 `ai/model` 中添加新的结果模型
-3. 在 `core/parser` 中添加新的解析器（实现 `CodeParser` 接口）
-4. 在 `core/saver` 中添加新的保存器（继承 `CodeFileSaverTemplate`）
-5. 在 `AiCodeGeneratorService` 中添加新的生成方法
-6. 在 `CodeParserExecutor` 和 `CodeFileSaverExecutor` 中注册新类型
-
----
-
-## 📊 接口文档
-
-启动后端后访问：`http://localhost:8123/api/doc.html`
-
----
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## TODO 扩展思路
-### 对话历史模块
-1、记录应用对话总轮次
-统计每个应用的对话轮数，这个数据可以用于分析用户使用习惯，也可以作为应用复杂度的参考指标。
-
-2、对话历史导出功能
-支持导出对话记录为 Markdown 文件，方便用户保存和分享开发过程。
-
-3、智能记忆管理（较难）
-利用 AI 分析对话次数较多的应用，智能总结过去的对话历史，节省 Token 的同时优化记忆效果。
-
-4、多人协作对话（较难）
-允许多个用户共同参与一个应用的对话，实现团队协作开发。在智能协同云图库项目中有实现多人协同操作的具体步骤。
-
-## 📄 许可证
-
-MIT License
+## 注意事项
+- Vue 项目生成需要运行环境已安装 Node.js 和 npm。
+- 页面截图需要服务器安装 Chrome 或 Chromium。
+- 生产环境应修改默认密码、部署域名和跨域配置，并通过环境变量管理密钥。
