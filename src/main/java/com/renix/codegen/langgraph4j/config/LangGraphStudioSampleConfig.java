@@ -1,4 +1,4 @@
-package com.renix.codegen.config;
+package com.renix.codegen.langgraph4j.config;
 
 import com.renix.codegen.langgraph4j.CodeGenWorkflow;
 import lombok.extern.slf4j.Slf4j;
