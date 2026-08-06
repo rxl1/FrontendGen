@@ -53,7 +53,7 @@ public class CodeGenWorkflow {
                     .addEdge("image_collector", "prompt_enhancer")
                     .addEdge("prompt_enhancer", "router")
                     .addEdge("router", "code_generator")
-                    .addEdge("code_generator", "project_builder")
+                    .addEdge("code_generator", "code_quality_check")
 
                     // 新增质检条件边：根据质检结果决定下一步
                     .addConditionalEdges("code_quality_check",
