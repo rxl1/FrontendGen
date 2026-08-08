@@ -40,6 +40,12 @@ public class WebScreenshotUtils {
 
     private static final String CHROME_VERSION_PROPERTY = "chrome.version";
 
+    /**
+     * Selenium 4.46.0 正式支持的最高 CDP 主版本。
+     * 等 Selenium 正式支持 Chrome 151 后可改回 stable。
+     */
+    private static final String DEFAULT_CHROME_VERSION = "150";
+
     private static final String SELENIUM_CACHE_PATH_PROPERTY = "SE_CACHE_PATH";
 
     private static final String CHROME_DRIVER_PROPERTY = "webdriver.chrome.driver";
@@ -155,7 +161,7 @@ public class WebScreenshotUtils {
             return;
         }
 
-        String chromeVersion = System.getProperty(CHROME_VERSION_PROPERTY, "stable");
+        String chromeVersion = System.getProperty(CHROME_VERSION_PROPERTY, DEFAULT_CHROME_VERSION);
         if (configureCachedChrome(options, chromeVersion)) {
             return;
         }

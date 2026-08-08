@@ -34,6 +34,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
 import java.io.Serializable;
@@ -172,9 +174,45 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 7. 收集 AI 响应的内容，并且在完成后保存记录到对话历史
         Flux<String> handledStream = streamHandlerExecutor.doExecute(
                 codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
-        // 8. 新应用首次生成完成后，基于预览页面异步生成封面。
-        // doOnComplete 不会在模型生成失败或客户端取消连接时执行，避免截取未完成页面。
-        return handledStream.doOnComplete(() -> postProcessGeneratedAppAsync(appId, codeGenTypeEnum));
+        // 8. Vue 预览依赖 dist，必须在 SSE 完成前等待项目构建成功。
+        Flux<String> previewReadyStream = waitForVueProjectBuild(
+                handledStream, appId, codeGenTypeEnum);
+        // 9. 预览就绪后再结束 SSE；封面生成仍异步执行，不阻塞用户查看预览。
+        // doOnComplete 不会在模型生成失败、Vue 构建失败或客户端取消连接时执行。
+        return previewReadyStream.doOnComplete(
+                () -> generatePreviewCoverAsync(appId, codeGenTypeEnum));
+    }
+
+    /**
+     * Vue 项目生成完成后执行构建，并将下游完成信号推迟到构建成功之后。
+     * npm install 和 npm run build 都是阻塞操作，因此放到 boundedElastic 调度器执行，
+     * 避免占用 LangChain4j 的流式响应线程。
+     */
+    private Flux<String> waitForVueProjectBuild(Flux<String> handledStream,
+                                                 Long appId,
+                                                 CodeGenTypeEnum codeGenType) {
+        if (codeGenType != CodeGenTypeEnum.VUE_PROJECT) {
+            return handledStream;
+        }
+
+        String projectDirName = codeGenType.getValue() + "_" + appId;
+        String projectPath = new File(
+                AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName).getAbsolutePath();
+        Mono<String> buildCompletion = Mono.fromCallable(() -> {
+                    log.info("AI 代码生成完成，开始同步等待 Vue 项目构建，appId：{}，目录：{}",
+                            appId, projectPath);
+                    boolean buildSuccess = vueProjectBuilder.buildProject(projectPath);
+                    if (!buildSuccess) {
+                        throw new BusinessException(
+                                ErrorCode.SYSTEM_ERROR, "Vue 项目构建失败，请检查生成代码后重试");
+                    }
+                    log.info("Vue 项目构建完成，即将结束生成流，appId：{}", appId);
+                    return "";
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                // 构建阶段只控制完成时机，不向前端额外发送正文消息。
+                .then(Mono.<String>empty());
+        return handledStream.concatWith(buildCompletion);
     }
 
     @Override
@@ -303,23 +341,16 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     /**
-     * 首次代码生成完成后，使用生成目录的预览页面创建应用封面。
-     * Vue 项目必须先完成构建，HTML 和多文件项目由代码流完成回调保证文件已经保存。
+     * 预览文件准备完成后，异步创建应用的首次封面。
+     * Vue 项目已经在生成流结束前完成构建，此处不得重复构建。
      */
-    private void postProcessGeneratedAppAsync(Long appId, CodeGenTypeEnum codeGenType) {
+    private void generatePreviewCoverAsync(Long appId, CodeGenTypeEnum codeGenType) {
         Thread.ofVirtual().name("app-generation-post-process-" + appId).start(() -> {
             try {
                 String projectDirName = codeGenType.getValue() + "_" + appId;
                 File projectDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName);
-                log.info("代码生成完成，开始执行应用后处理，appId：{}，类型：{}",
+                log.info("预览文件已准备完成，开始异步生成应用封面，appId：{}，类型：{}",
                         appId, codeGenType.getValue());
-                // Vue 的预览依赖 dist；无论是否已有封面，每次生成后都需要重新构建。
-                if (codeGenType == CodeGenTypeEnum.VUE_PROJECT
-                        && !vueProjectBuilder.buildProject(projectDir.getAbsolutePath())) {
-                    log.error("Vue 项目构建失败，无法更新预览和生成应用封面，appId：{}，目录：{}",
-                            appId, projectDir.getAbsolutePath());
-                    return;
-                }
 
                 App currentApp = getById(appId);
                 if (currentApp == null) {

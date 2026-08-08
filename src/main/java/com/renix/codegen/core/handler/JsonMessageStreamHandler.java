@@ -64,46 +64,6 @@ public class JsonMessageStreamHandler {
                 });
     }
 
-    ///**
-    // * 解析并收集 TokenStream 数据
-    // */
-    //private void collectHistoryContent(String chunk, StringBuilder chatHistoryStringBuilder, Set<String> seenToolIds) {
-    //    // handleJsonMessageChunk
-    //    // 解析 JSON
-    //    StreamMessage streamMessage = JSONUtil.toBean(chunk, StreamMessage.class);
-    //    StreamMessageTypeEnum typeEnum = StreamMessageTypeEnum.getEnumByValue(streamMessage.getType());
-    //    if (typeEnum == null) {
-    //        log.warn("忽略未知的流式消息: {}", chunk);
-    //        return;
-    //    }
-    //    switch (typeEnum) {
-    //        case AI_RESPONSE -> {
-    //            AiResponseMessage aiMessage = JSONUtil.toBean(chunk, AiResponseMessage.class);
-    //            String content = aiMessage.getContent();
-    //            if (content != null) {
-    //                chatHistoryStringBuilder.append(content);
-    //            }
-    //        }
-    //        case TOOL_REQUEST -> {
-    //            ToolRequestMessage toolRequestMessage = JSONUtil.toBean(chunk, ToolRequestMessage.class);
-    //            String toolId = toolRequestMessage.getId();
-    //            String toolName = toolRequestMessage.getName();
-    //            String toolKey = toolId != null ? toolId : toolRequestMessage.getName();
-    //            // 检查是否是第一次看到这个工具 ID
-    //            if (toolKey != null && seenToolIds.add(toolKey)) {
-    //                chatHistoryStringBuilder
-    //                        .append("\n\n> [选择工具] ")
-    //                        .append(getToolDisplayName(toolRequestMessage.getName()))
-    //                        .append("\n\n");
-    //            }
-    //        }
-    //        case TOOL_EXECUTED -> {
-    //            ToolExecutedMessage toolExecutedMessage = JSONUtil.toBean(chunk, ToolExecutedMessage.class);
-    //            appendToolExecution(chatHistoryStringBuilder, toolExecutedMessage);
-    //        }
-    //    }
-    //}
-
     /**
      * 解析并收集 TokenStream 数据
      */

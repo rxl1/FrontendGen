@@ -8,6 +8,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 
+import java.time.Duration;
+
 @Configuration
 @ConfigurationProperties(prefix = "langchain4j.open-ai.reasoning-streaming-chat-model")
 @Data
@@ -22,6 +24,11 @@ public class ReasoningStreamingChatModelConfig {
     private Integer maxTokens;
 
     private Double temperature;
+
+    /**
+     * 模型流读取超时。Vue 工具调用可能长时间生成文件参数，不能使用 LangChain4j 默认的 60 秒。
+     */
+    private Duration timeout = Duration.ofMinutes(5);
 
     private Boolean logRequests = false;
 
@@ -39,6 +46,7 @@ public class ReasoningStreamingChatModelConfig {
                 .modelName(modelName)
                 .maxTokens(maxTokens)
                 .temperature(temperature)
+                .timeout(timeout)
                 .logRequests(logRequests)
                 .logResponses(logResponses)
                 .build();

@@ -2,6 +2,7 @@ package com.renix.codegen.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.renix.codegen.ai.guardrail.PromptSafetyInputGuardrail;
 import com.renix.codegen.ai.tools.ToolManager;
 import com.renix.codegen.exception.BusinessException;
 import com.renix.codegen.exception.ErrorCode;
@@ -114,20 +115,23 @@ public class AiCodeGeneratorServiceFactory {
                 // 使用多例模式的StreamingChatModel解决并发问题
                 StreamingChatModel reasoningStreamingChatModel = SpringContextUtil.getBean("reasoningStreamingChatModelPrototype", StreamingChatModel.class);
                 yield AiServices.builder(AiCodeGeneratorService.class)
-                    .chatModel(chatModel)
-                    //.streamingChatModel(retryingStreamingChatModel)
-                    .streamingChatModel(reasoningStreamingChatModel)
-                    .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(toolManager.getAllTools())
-                    // 工具参数由模型生成，长代码中的引号或反斜杠偶尔会导致 JSON 不合法。
-                    // 将参数错误反馈给模型，让它只重试失败的文件，避免一次格式错误终止整个 SSE 流。
-                    .toolArgumentsErrorHandler(malformedToolArgumentsRetryHandler())
-                    // 处理工具调用幻觉问题
-                    .hallucinatedToolNameStrategy(toolExecutionRequest ->
-                            ToolExecutionResultMessage.from(toolExecutionRequest,
-                                    "Error: there is no tool called " + toolExecutionRequest.name())
-                    )
-                    .build();
+                        .chatModel(chatModel)
+                        //.streamingChatModel(retryingStreamingChatModel)
+                        // .streamingChatModel(reasoningStreamingChatModel)
+                        .chatMemoryProvider(memoryId -> chatMemory)
+                        .tools(toolManager.getAllTools())
+                        // 工具参数由模型生成，长代码中的引号或反斜杠偶尔会导致 JSON 不合法。
+                        // 将参数错误反馈给模型，让它只重试失败的文件，避免一次格式错误终止整个 SSE 流。
+                        .toolArgumentsErrorHandler(malformedToolArgumentsRetryHandler())
+                        // 处理工具调用幻觉问题
+                        .hallucinatedToolNameStrategy(toolExecutionRequest ->
+                                ToolExecutionResultMessage.from(toolExecutionRequest,
+                                        "Error: there is no tool called " + toolExecutionRequest.name())
+                        )
+                        .maxToolCallingRoundTrips(20)  // 最多连续调用 20 次工具
+                        .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
+                        //.outputGuardrails(new RetryOutputGuardrail())   // 为了流式输出,注释改行
+                        .build();
             }
             // HTML 和 多文件生成，使用流式对话模型
             case HTML,MULTI_FILE -> {
@@ -135,10 +139,12 @@ public class AiCodeGeneratorServiceFactory {
                 StreamingChatModel streamingChatModel = SpringContextUtil.getBean(
                         "streamingChatModelPrototype", StreamingChatModel.class);
                 yield AiServices.builder(AiCodeGeneratorService.class)
-                    .chatModel(chatModel)
-                    .streamingChatModel(streamingChatModel)
-                    .chatMemory(chatMemory)
-                    .build();
+                        .chatModel(chatModel)
+                        .streamingChatModel(streamingChatModel)
+                        .chatMemory(chatMemory)
+                        .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
+                        //.outputGuardrails(new RetryOutputGuardrail())   // 为了流式输出,注释改行
+                        .build();
             }
             default ->
                     throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型: " + codeGenType.getValue());

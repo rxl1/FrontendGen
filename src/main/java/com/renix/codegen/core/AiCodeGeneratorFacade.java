@@ -138,8 +138,8 @@ public class AiCodeGeneratorFacade {
                         sink.complete();
                     })
                     .onError((Throwable error) -> {
-                        // 错误处理
-                        log.error("TokenStream 错误: {}", error.getMessage());
+                        // 保留完整异常链，便于区分超时、上游断流和协议解析错误。
+                        log.error("TokenStream 错误", error);
                         sink.error(error);
                     })
                     .start();
@@ -169,8 +169,11 @@ public class AiCodeGeneratorFacade {
                 // 使用执行器保存代码
                 File saveDir = CodeFileSaverExecutor.executeSaver(parsedResult, codeGenType, appId);
                 log.info("保存成功，目录为：{}", saveDir.getAbsolutePath());
+            } catch (BusinessException e) {
+                // 模型可能只回复普通说明文字；此时保留上一版文件，避免把回答文本覆盖成网页。
+                log.warn("本轮 AI 回复未保存为代码，原网页保持不变: {}", e.getMessage());
             } catch (Exception e) {
-                log.error("保存失败: {}", e.getMessage());
+                log.error("保存代码失败", e);
             }
         });
     }

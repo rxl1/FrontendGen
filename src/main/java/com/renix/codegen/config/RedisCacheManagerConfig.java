@@ -26,9 +26,7 @@ public class RedisCacheManagerConfig {
 
     @Bean
     public CacheManager cacheManager() {
-        // 配置 ObjectMapper 支持 Java8 时间类型
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
+        GenericJackson2JsonRedisSerializer jsonSerializer = createJsonSerializer();
 
         // 默认配置
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
@@ -37,9 +35,9 @@ public class RedisCacheManagerConfig {
                 // key 使用 String 序列化器
                 //.serializeKeysWith(RedisSerializationContext.SerializationPair
                 //        .fromSerializer(new StringRedisSerializer()));
-//                // value 使用 JSON 序列化器（支持复杂对象）但是要注意开启后需要给序列化增加默认类型配置，否则无法反序列化
+                // value 使用带类型元数据的 JSON 序列化器
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
-                        .fromSerializer(new GenericJackson2JsonRedisSerializer(objectMapper)));
+                        .fromSerializer(jsonSerializer));
 
         return RedisCacheManager.builder(redisConnectionFactory)
                 .cacheDefaults(defaultConfig)
@@ -48,4 +46,17 @@ public class RedisCacheManagerConfig {
                         defaultConfig.entryTtl(Duration.ofMinutes(5)))
                 .build();
     }
-} 
+
+    static GenericJackson2JsonRedisSerializer createJsonSerializer() {
+        // 配置 ObjectMapper 支持 Java8 时间类型
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+
+        // Redis 反序列化时拿不到方法的泛型返回类型，必须在 JSON 中保留实际类型信息。
+        // 使用 builder 显式开启 default typing，避免缓存命中后被还原成 LinkedHashMap。
+        return GenericJackson2JsonRedisSerializer.builder()
+                .objectMapper(objectMapper)
+                .defaultTyping(true)
+                .build();
+    }
+}

@@ -153,7 +153,7 @@
     <dependency>
       <groupId>org.seleniumhq.selenium</groupId>
       <artifactId>selenium-java</artifactId>
-      <version>4.33.0</version>
+      <version>4.46.0</version>
     </dependency>
     <!-- 腾讯 COS 对象存储依赖 -->
     <dependency>
@@ -172,6 +172,12 @@
       <groupId>org.bsc.langgraph4j</groupId>
       <artifactId>langgraph4j-studio-springboot</artifactId>
       <version>1.8.22</version>
+    </dependency>
+    <!-- Redisson 分布式缓存-->
+    <dependency>
+      <groupId>org.redisson</groupId>
+      <artifactId>redisson</artifactId>
+      <version>4.7.0</version>
     </dependency>
 
   </dependencies>

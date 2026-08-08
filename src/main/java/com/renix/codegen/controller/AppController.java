@@ -20,6 +20,8 @@ import com.renix.codegen.model.entity.App;
 import com.renix.codegen.model.entity.User;
 import com.renix.codegen.model.enums.CodeGenTypeEnum;
 import com.renix.codegen.model.vo.AppVO;
+import com.renix.codegen.ratelimter.annotation.RateLimit;
+import com.renix.codegen.ratelimter.enums.RateLimitType;
 import com.renix.codegen.service.AppService;
 import com.renix.codegen.service.ProjectDownloadService;
 import com.renix.codegen.service.UserService;
@@ -27,6 +29,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -122,6 +125,7 @@ public class AppController {
      * @return 更新结果
      */
     @PostMapping("/update")
+    @CacheEvict(value = "good_app_page", allEntries = true)
     public BaseResponse<Boolean> updateApp(@RequestBody AppUpdateRequest appUpdateRequest, HttpServletRequest request) {
         if (appUpdateRequest == null || appUpdateRequest.getId() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -153,6 +157,7 @@ public class AppController {
      * @return 删除结果
      */
     @PostMapping("/delete")
+    @CacheEvict(value = "good_app_page", allEntries = true)
     public BaseResponse<Boolean> deleteApp(@RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -250,6 +255,7 @@ public class AppController {
      */
     @PostMapping("/admin/delete")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @CacheEvict(value = "good_app_page", allEntries = true)
     public BaseResponse<Boolean> deleteAppByAdmin(@RequestBody DeleteRequest deleteRequest) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -270,6 +276,7 @@ public class AppController {
      */
     @PostMapping("/admin/update")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @CacheEvict(value = "good_app_page", allEntries = true)
     public BaseResponse<Boolean> updateAppByAdmin(@RequestBody AppAdminUpdateRequest appAdminUpdateRequest) {
         if (appAdminUpdateRequest == null || appAdminUpdateRequest.getId() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -334,6 +341,7 @@ public class AppController {
      * @return 生成结果流
      */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RateLimit(limitType = RateLimitType.USER, rate = 5, rateInterval = 60, message = "AI 对话请求过于频繁，请稍后再试")
     public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
                                                        @RequestParam String message,
                                                        HttpServletRequest request,
@@ -374,6 +382,9 @@ public class AppController {
                         clientMessage = businessException.getMessage();
                     } else if (error instanceof dev.langchain4j.exception.RetriableException) {
                         clientMessage = "AI 服务暂时繁忙，自动重试后仍未恢复，请稍后再试";
+                    } else if (error instanceof dev.langchain4j.guardrail.InputGuardrailException inputGuardrailException) {
+                        // 输入护轨异常：提取 guardrail 返回的具体错误消息
+                        clientMessage = inputGuardrailException.getMessage();
                     }
                     log.warn("AI 生成流异常，已转换为 business-error SSE 事件: appId={}, errorType={}, message={}",
                             appId, error.getClass().getSimpleName(), clientMessage);

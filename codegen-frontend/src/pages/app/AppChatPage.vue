@@ -587,7 +587,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         markAppCoverPending(String(appId.value))
       }
 
-      // 延迟更新预览，确保后端已完成处理
+      // 后端会在 Vue 构建完成后发送 done；短暂延迟用于等待静态资源请求链路稳定。
       setTimeout(async () => {
         await fetchAppInfo()
         updatePreview()
@@ -707,7 +707,7 @@ const pollPreviewAvailability = async (
   }, nextDelay)
 }
 
-// 更新预览：Vue 构建在后端异步执行，等待 dist/index.html 可访问后再加载 iframe。
+// 更新预览：后端在 done 前完成 Vue 构建；轮询作为静态资源短暂不可用时的兜底。
 const updatePreview = () => {
   if (!appId.value) return
 
