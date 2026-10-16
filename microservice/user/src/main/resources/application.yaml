@@ -1,0 +1,46 @@
+
+server:
+  port: 8124
+  servlet:
+    context-path: /api
+    # cookie 配置
+    session:
+      cookie:
+        # cookie 过期时间，默认 30 天
+        max-age: 2592000
+
+# Spring 配置
+spring:
+  application:
+    name: FrontendGen-user
+  profiles:
+    active: dev
+  # session 配置
+  session:
+    store-type: redis
+    # session 过期时间，默认 30 天
+    timeout: 2592000
+  jackson:
+    default-property-inclusion: NON_NULL # JSON处理时忽略非空字段
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+
+# SpringDoc 接口文档
+springdoc:
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.rick.frontendgen.controller
+
+# knife4j
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+# 日志配置
+logging:
+  level:
+    com.renix: debug
+  pattern:
+    dateformat: mm:ss.SSS

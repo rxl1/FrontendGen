@@ -1,0 +1,11 @@
+
+server:
+  port: 8127
+  servlet:
+    context-path: /api
+    
+spring:
+  application:
+    name: Frontend-ScreenShot
+  profiles:
+    active: dev

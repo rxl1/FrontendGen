@@ -1,24 +1,25 @@
 services:
   mysql:
-    image: mysql:8
-    container_name: codegen-mysql
+    image: mysql:8.4.11
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
       MYSQL_ROOT_PASSWORD: rxl2000
     command:
-    - --character-set-server=utf8mb4
-    - --collation-server=utf8mb4_unicode_ci
-    - --sql-mode=NO_ENGINE_SUBSTITUTION
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
     ports:
       - "3306:3306"
     volumes:
       - ./data/mysql:/var/lib/mysql
 
-  redis-master:
-    image: redis:8.6.2
-    container_name: codegen-redis-master
+  redis:
+    image: redis:8.6.6
     restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_PASSWORD: rxl2000
     command: >
       redis-server
       --port 6379
@@ -27,14 +28,15 @@ services:
       --appendonly yes
       --appendfsync everysec
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - ./data/redis/master:/data
 
   nginx:
-    image: nginx:latest
-    container_name: codegen-nginx
+    image: nginx:1.30.4
     restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
     ports:
       - "80:80"
     volumes:
@@ -44,4 +46,52 @@ services:
       - ./tmp/code_deploy:/usr/share/nginx/html
     depends_on:
       - mysql
-      - redis-master
+      - redis
+
+  nacos:
+    image: nacos/nacos-server:v3.0.3
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      PREFER_HOST_MODE: hostname
+      MODE: standalone
+      # MySQL 配置 - 使用同一个 MySQL 服务
+      SPRING_DATASOURCE_PLATFORM: mysql
+      MYSQL_SERVICE_HOST: mysql
+      MYSQL_SERVICE_DB_NAME: nacos_config
+      MYSQL_SERVICE_PORT: 3306
+      MYSQL_SERVICE_USER: root
+      MYSQL_SERVICE_PASSWORD: rxl2000
+      MYSQL_SERVICE_DB_PARAM: "characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
+      # Nacos 认证配置
+      NACOS_AUTH_TOKEN: EzfZPeWhJEe+k7WIt12JoayaBGOnxEMxH3tvjWuZPNBXRFuYbjhJr1dI1y9fHqqdbS1S1gEg+BH32tNtUV3spg==
+      NACOS_AUTH_IDENTITY_KEY: nacos
+      NACOS_AUTH_IDENTITY_VALUE: nacos
+    ports:
+      - "8080:8080"
+      - "8848:8848"
+      - "9848:9848"
+    volumes:
+      - ./data/nacos-logs:/home/nacos/logs
+    depends_on:
+      - mysql
+    
+  higress:
+      image: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/all-in-one:2.2.5
+      restart: unless-stopped
+      environment:
+        TZ: Asia/Shanghai
+        MODE: full
+      ports:
+        # 网关 HTTP 入口，顶替原单体的 8123
+        - "8123:8080"
+        # 控制台，仅本机可访问
+        - "127.0.0.1:8001:8001"
+      volumes:
+        - ./data/higress:/data
+      extra_hosts:
+        # 微服务跑在宿主机上，网关需要经此转发到 8124/8125
+        - "host.docker.internal:host-gateway"
+      depends_on:
+        - nacos
+      
